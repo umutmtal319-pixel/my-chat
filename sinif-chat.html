@@ -1,0 +1,1157 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chat 💬</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f0e17;
+    --surface: #1a1927;
+    --card: #22213a;
+    --accent: #ff6b35;
+    --accent2: #7b5ea7;
+    --accent3: #3ecfcf;
+    --text: #fffffe;
+    --muted: #a7a9be;
+    --border: #2e2d4a;
+    --online: #3ecfcf;
+    --msg-own: #ff6b35;
+    --msg-other: #22213a;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Nunito', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* === LOGIN SCREEN === */
+  #loginScreen {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    animation: fadeIn 0.4s ease;
+  }
+
+  .login-box {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 24px;
+    padding: 48px 40px;
+    width: min(420px, 90vw);
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .login-box::before {
+    content: '';
+    position: absolute;
+    top: -60px; right: -60px;
+    width: 180px; height: 180px;
+    background: radial-gradient(circle, var(--accent2) 0%, transparent 70%);
+    opacity: 0.4;
+    pointer-events: none;
+  }
+
+  .login-box::after {
+    content: '';
+    position: absolute;
+    bottom: -60px; left: -60px;
+    width: 180px; height: 180px;
+    background: radial-gradient(circle, var(--accent3) 0%, transparent 70%);
+    opacity: 0.3;
+    pointer-events: none;
+  }
+
+  .login-emoji {
+    font-size: 64px;
+    display: block;
+    margin-bottom: 12px;
+    animation: bounce 2s ease-in-out infinite;
+  }
+
+  @keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+
+  .login-title {
+    font-size: 2rem;
+    font-weight: 900;
+    color: var(--text);
+    margin-bottom: 6px;
+    letter-spacing: -1px;
+  }
+
+  .login-subtitle {
+    color: var(--muted);
+    margin-bottom: 32px;
+    font-size: 0.95rem;
+  }
+
+  .login-label {
+    display: block;
+    text-align: left;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .login-input {
+    width: 100%;
+    background: var(--card);
+    border: 2px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 18px;
+    color: var(--text);
+    font-family: 'Nunito', sans-serif;
+    font-size: 1rem;
+    font-weight: 600;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    margin-bottom: 16px;
+  }
+
+  .login-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.15);
+  }
+
+  .avatar-picker {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-bottom: 28px;
+  }
+
+  .avatar-btn {
+    width: 44px; height: 44px;
+    border-radius: 12px;
+    border: 2px solid var(--border);
+    background: var(--card);
+    font-size: 22px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+  }
+
+  .avatar-btn:hover { transform: scale(1.15); border-color: var(--muted); }
+  .avatar-btn.selected { border-color: var(--accent); background: rgba(255,107,53,0.15); transform: scale(1.1); }
+
+  .login-btn {
+    width: 100%;
+    padding: 14px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 12px;
+    font-family: 'Nunito', sans-serif;
+    font-size: 1.05rem;
+    font-weight: 800;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    letter-spacing: 0.3px;
+  }
+
+  .login-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(255, 107, 53, 0.35);
+  }
+
+  .login-btn:active { transform: translateY(0); }
+
+  /* === MAIN APP === */
+  #app {
+    display: none;
+    flex-direction: column;
+    height: 100vh;
+    animation: fadeIn 0.4s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* === HEADER === */
+  header {
+    background: var(--surface);
+    border-bottom: 2px solid var(--border);
+    padding: 0 24px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 10;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .header-logo {
+    font-size: 1.5rem;
+    font-weight: 900;
+    letter-spacing: -1px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .logo-dot {
+    width: 10px; height: 10px;
+    background: var(--accent);
+    border-radius: 50%;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(0.8); }
+  }
+
+  .room-badge {
+    background: var(--card);
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    padding: 4px 12px;
+    font-size: 0.8rem;
+    color: var(--muted);
+    font-weight: 700;
+    font-family: 'Space Mono', monospace;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .online-count {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--accent3);
+  }
+
+  .online-dot {
+    width: 8px; height: 8px;
+    background: var(--accent3);
+    border-radius: 50%;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  .user-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--card);
+    border: 1.5px solid var(--border);
+    border-radius: 24px;
+    padding: 6px 14px 6px 8px;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+
+  .user-chip:hover { border-color: var(--accent); }
+
+  .chip-avatar {
+    font-size: 18px;
+    line-height: 1;
+  }
+
+  .chip-name {
+    font-size: 0.85rem;
+    font-weight: 700;
+  }
+
+  /* === LAYOUT === */
+  .main-layout {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* === SIDEBAR === */
+  .sidebar {
+    width: 240px;
+    background: var(--surface);
+    border-right: 2px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+
+  .sidebar-section {
+    padding: 16px 16px 8px;
+  }
+
+  .sidebar-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    padding: 0 4px;
+  }
+
+  .channel-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.15s;
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: var(--muted);
+  }
+
+  .channel-item.active {
+    background: rgba(255, 107, 53, 0.12);
+    color: var(--accent);
+  }
+
+  .channel-item:hover:not(.active) {
+    background: rgba(255,255,255,0.04);
+    color: var(--text);
+  }
+
+  .channel-hash {
+    font-family: 'Space Mono', monospace;
+    font-size: 1rem;
+    opacity: 0.7;
+  }
+
+  .sidebar-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 8px 16px;
+  }
+
+  .members-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 12px 12px;
+  }
+
+  .member-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 8px;
+    border-radius: 10px;
+    transition: background 0.15s;
+  }
+
+  .member-item:hover { background: rgba(255,255,255,0.04); }
+
+  .member-avatar {
+    font-size: 20px;
+    line-height: 1;
+    position: relative;
+  }
+
+  .member-online-indicator {
+    position: absolute;
+    bottom: -2px; right: -2px;
+    width: 8px; height: 8px;
+    background: var(--online);
+    border-radius: 50%;
+    border: 1.5px solid var(--surface);
+  }
+
+  .member-name {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .member-you {
+    font-size: 0.65rem;
+    color: var(--accent);
+    font-weight: 800;
+    background: rgba(255,107,53,0.1);
+    border-radius: 4px;
+    padding: 1px 5px;
+    margin-left: auto;
+  }
+
+  /* === CHAT AREA === */
+  .chat-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg);
+  }
+
+  .chat-header {
+    padding: 16px 24px;
+    border-bottom: 2px solid var(--border);
+    background: var(--surface);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+
+  .chat-header-hash {
+    font-family: 'Space Mono', monospace;
+    font-size: 1.3rem;
+    color: var(--accent);
+  }
+
+  .chat-header-name {
+    font-weight: 800;
+    font-size: 1.05rem;
+  }
+
+  .chat-header-desc {
+    margin-left: auto;
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+
+  /* === MESSAGES === */
+  #messagesContainer {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    scroll-behavior: smooth;
+  }
+
+  #messagesContainer::-webkit-scrollbar { width: 4px; }
+  #messagesContainer::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .day-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 16px 0 8px;
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+  }
+
+  .day-divider::before, .day-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  .msg-group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: 8px;
+  }
+
+  .msg-group-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+
+  .msg-avatar {
+    font-size: 24px;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .msg-author {
+    font-weight: 800;
+    font-size: 0.95rem;
+  }
+
+  .msg-time {
+    font-size: 0.72rem;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+  }
+
+  .msg-bubble {
+    margin-left: 46px;
+    background: var(--card);
+    border: 1.5px solid var(--border);
+    border-radius: 4px 14px 14px 14px;
+    padding: 10px 14px;
+    max-width: 70%;
+    width: fit-content;
+    font-size: 0.95rem;
+    font-weight: 600;
+    line-height: 1.5;
+    word-break: break-word;
+    animation: msgIn 0.2s ease;
+  }
+
+  @keyframes msgIn {
+    from { opacity: 0; transform: translateY(6px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .msg-bubble.own {
+    background: var(--accent);
+    border-color: transparent;
+    border-radius: 14px 4px 14px 14px;
+    color: #fff;
+    margin-left: auto;
+    margin-right: 0;
+  }
+
+  .msg-group.own { align-items: flex-end; }
+  .msg-group.own .msg-group-header { flex-direction: row-reverse; }
+  .msg-group.own .msg-bubble { margin-left: 0; }
+
+  /* System message */
+  .sys-msg {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 4px 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  /* === TYPING INDICATOR === */
+  .typing-bar {
+    height: 28px;
+    padding: 0 24px;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+
+  .typing-text {
+    font-size: 0.78rem;
+    color: var(--muted);
+    font-style: italic;
+    font-weight: 600;
+  }
+
+  .typing-dots {
+    display: inline-flex;
+    gap: 3px;
+    margin-right: 6px;
+  }
+
+  .typing-dots span {
+    width: 4px; height: 4px;
+    background: var(--muted);
+    border-radius: 50%;
+    animation: typingDot 1.2s ease-in-out infinite;
+  }
+
+  .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes typingDot {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+    30% { transform: translateY(-4px); opacity: 1; }
+  }
+
+  /* === INPUT AREA === */
+  .input-area {
+    padding: 12px 24px 20px;
+    flex-shrink: 0;
+  }
+
+  .input-box {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--card);
+    border: 2px solid var(--border);
+    border-radius: 16px;
+    padding: 10px 16px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+
+  .input-box:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.1);
+  }
+
+  #msgInput {
+    flex: 1;
+    background: none;
+    border: none;
+    outline: none;
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text);
+    resize: none;
+    max-height: 120px;
+  }
+
+  #msgInput::placeholder { color: var(--muted); }
+
+  .emoji-btn, .send-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 8px;
+    transition: background 0.15s, transform 0.1s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+
+  .emoji-btn:hover { background: rgba(255,255,255,0.06); transform: scale(1.1); }
+
+  .send-btn {
+    background: var(--accent);
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    font-size: 18px;
+  }
+
+  .send-btn:hover { transform: scale(1.08); box-shadow: 0 4px 12px rgba(255,107,53,0.4); }
+  .send-btn:active { transform: scale(0.96); }
+
+  /* === EMOJI PICKER === */
+  .emoji-picker {
+    position: absolute;
+    bottom: 90px;
+    right: 24px;
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 16px;
+    padding: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    width: 280px;
+    z-index: 50;
+    animation: fadeIn 0.2s ease;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+
+  .emoji-option {
+    font-size: 22px;
+    padding: 6px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.1s, transform 0.1s;
+  }
+
+  .emoji-option:hover { background: rgba(255,255,255,0.08); transform: scale(1.2); }
+
+  .hidden { display: none !important; }
+
+  /* Responsive */
+  @media (max-width: 640px) {
+    .sidebar { display: none; }
+    header { padding: 0 16px; }
+    .chat-header-desc { display: none; }
+    #messagesContainer { padding: 16px; }
+    .input-area { padding: 8px 12px 16px; }
+    .msg-bubble { max-width: 85%; }
+  }
+</style>
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div id="loginScreen">
+  <div class="login-box">
+    <span class="login-emoji">💬</span>
+    <h1 class="login-title">Chat</h1>
+    <p class="login-subtitle">Arkadaşlarınla konuşmaya başla!</p>
+
+    <label class="login-label">Kullanıcı Adın</label>
+    <input class="login-input" id="nameInput" placeholder="Adını gir..." maxlength="20" />
+
+    <label class="login-label">Avatarını Seç</label>
+    <div class="avatar-picker" id="avatarPicker">
+      <!-- filled by JS -->
+    </div>
+
+    <button class="login-btn" onclick="joinChat()">Sohbete Katıl 🚀</button>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app">
+  <header>
+    <div class="header-left">
+      <div class="header-logo">
+        <div class="logo-dot"></div>
+        Chat
+      </div>
+      <span class="room-badge">#genel</span>
+    </div>
+    <div class="header-right">
+      <div class="online-count">
+        <div class="online-dot"></div>
+        <span id="onlineCountDisplay">1 çevrimiçi</span>
+      </div>
+      <div class="user-chip" onclick="logout()">
+        <span class="chip-avatar" id="headerAvatar">🧑</span>
+        <span class="chip-name" id="headerName">Sen</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-label">Kanallar</div>
+        <div class="channel-item active">
+          <span class="channel-hash">#</span>
+          genel
+        </div>
+        <div class="channel-item">
+          <span class="channel-hash">#</span>
+          sohbet
+        </div>
+        <div class="channel-item">
+          <span class="channel-hash">#</span>
+          eğlence
+        </div>
+        <div class="channel-item">
+          <span class="channel-hash">#</span>
+          duyurular
+        </div>
+      </div>
+      <div class="sidebar-divider"></div>
+      <div class="sidebar-section">
+        <div class="sidebar-label">Çevrimiçi</div>
+      </div>
+      <div class="members-list" id="membersList"></div>
+    </div>
+
+    <!-- CHAT AREA -->
+    <div class="chat-area" style="position:relative">
+      <div class="chat-header">
+        <span class="chat-header-hash">#</span>
+        <span class="chat-header-name">genel</span>
+        <span class="chat-header-desc">Genel sohbet kanalı</span>
+      </div>
+
+      <div id="messagesContainer">
+        <div class="day-divider">Bugün</div>
+        <div class="sys-msg">🎉 Chat'e hoş geldiniz! Burası ortak sohbet alanı.</div>
+      </div>
+
+      <div class="typing-bar">
+        <div id="typingIndicator" class="hidden">
+          <div class="typing-dots"><span></span><span></span><span></span></div>
+          <span class="typing-text" id="typingText"></span>
+        </div>
+      </div>
+
+      <div class="input-area">
+        <div class="input-box">
+          <button class="emoji-btn" onclick="toggleEmojiPicker()" title="Emoji">😊</button>
+          <textarea id="msgInput" placeholder="Bir mesaj yaz..." rows="1" maxlength="500"></textarea>
+          <button class="send-btn" onclick="sendMessage()" title="Gönder">➤</button>
+        </div>
+      </div>
+
+      <!-- Emoji Picker -->
+      <div class="emoji-picker hidden" id="emojiPicker"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const EMOJIS = ['🧑','👩','👦','👧','🧒','👱','🧔','👨‍🎓','👩‍🎓','🦸','🦊','🐼','🐯','🐸','🦄','🐧','🦋','🌟'];
+const REACTION_EMOJIS = ['😂','😍','🔥','👍','❤️','😮','😢','🥳','💯','🤔','😎','👋','🎉','💪','✨','🤗','😴','🙈'];
+const STORAGE_KEY = 'chat_msgs';
+const ONLINE_KEY = 'chat_online';
+const TYPING_KEY = 'chat_typing';
+
+let currentUser = null;
+let lastSender = null;
+let typingTimer = null;
+let lastMsgCount = 0;
+let pollInterval = null;
+
+// Setup avatar picker
+const avatarPicker = document.getElementById('avatarPicker');
+EMOJIS.forEach((e, i) => {
+  const btn = document.createElement('button');
+  btn.className = 'avatar-btn' + (i === 0 ? ' selected' : '');
+  btn.textContent = e;
+  btn.onclick = () => {
+    document.querySelectorAll('.avatar-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+  };
+  avatarPicker.appendChild(btn);
+});
+
+// Setup emoji picker
+const emojiPicker = document.getElementById('emojiPicker');
+REACTION_EMOJIS.forEach(e => {
+  const span = document.createElement('span');
+  span.className = 'emoji-option';
+  span.textContent = e;
+  span.onclick = () => { insertEmoji(e); emojiPicker.classList.add('hidden'); };
+  emojiPicker.appendChild(span);
+});
+
+function toggleEmojiPicker() {
+  emojiPicker.classList.toggle('hidden');
+}
+
+function insertEmoji(emoji) {
+  const input = document.getElementById('msgInput');
+  input.value += emoji;
+  input.focus();
+}
+
+// Close emoji picker when clicking outside
+document.addEventListener('click', e => {
+  if (!emojiPicker.contains(e.target) && !e.target.classList.contains('emoji-btn')) {
+    emojiPicker.classList.add('hidden');
+  }
+});
+
+// Storage helpers (using window.storage if available, otherwise localStorage as fallback)
+async function getMessages() {
+  try {
+    const result = await window.storage.get(STORAGE_KEY, true);
+    return result ? JSON.parse(result.value) : [];
+  } catch {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; }
+  }
+}
+
+async function saveMessages(msgs) {
+  try {
+    await window.storage.set(STORAGE_KEY, JSON.stringify(msgs), true);
+  } catch {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(msgs)); } catch {}
+  }
+}
+
+async function getOnlineUsers() {
+  try {
+    const result = await window.storage.get(ONLINE_KEY, true);
+    return result ? JSON.parse(result.value) : {};
+  } catch {
+    try { return JSON.parse(localStorage.getItem(ONLINE_KEY) || '{}'); } catch { return {}; }
+  }
+}
+
+async function setOnlineUser(user) {
+  try {
+    const online = await getOnlineUsers();
+    online[user.name] = { ...user, ts: Date.now() };
+    await window.storage.set(ONLINE_KEY, JSON.stringify(online), true);
+  } catch {
+    try {
+      const online = JSON.parse(localStorage.getItem(ONLINE_KEY) || '{}');
+      online[user.name] = { ...user, ts: Date.now() };
+      localStorage.setItem(ONLINE_KEY, JSON.stringify(online));
+    } catch {}
+  }
+}
+
+async function removeOnlineUser(name) {
+  try {
+    const online = await getOnlineUsers();
+    delete online[name];
+    await window.storage.set(ONLINE_KEY, JSON.stringify(online), true);
+  } catch {
+    try {
+      const online = JSON.parse(localStorage.getItem(ONLINE_KEY) || '{}');
+      delete online[name];
+      localStorage.setItem(ONLINE_KEY, JSON.stringify(online));
+    } catch {}
+  }
+}
+
+async function getTyping() {
+  try {
+    const result = await window.storage.get(TYPING_KEY, true);
+    return result ? JSON.parse(result.value) : {};
+  } catch {
+    try { return JSON.parse(localStorage.getItem(TYPING_KEY) || '{}'); } catch { return {}; }
+  }
+}
+
+async function setTyping(name, isTyping) {
+  try {
+    const typing = await getTyping();
+    if (isTyping) typing[name] = Date.now();
+    else delete typing[name];
+    await window.storage.set(TYPING_KEY, JSON.stringify(typing), true);
+  } catch {
+    try {
+      const typing = JSON.parse(localStorage.getItem(TYPING_KEY) || '{}');
+      if (isTyping) typing[name] = Date.now();
+      else delete typing[name];
+      localStorage.setItem(TYPING_KEY, JSON.stringify(typing));
+    } catch {}
+  }
+}
+
+function joinChat() {
+  const name = document.getElementById('nameInput').value.trim();
+  const avatar = document.querySelector('.avatar-btn.selected')?.textContent || '🧑';
+  if (!name) {
+    document.getElementById('nameInput').style.borderColor = '#ff4444';
+    document.getElementById('nameInput').placeholder = 'Lütfen adını gir!';
+    return;
+  }
+  currentUser = { name, avatar };
+  document.getElementById('headerName').textContent = name;
+  document.getElementById('headerAvatar').textContent = avatar;
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+
+  setOnlineUser(currentUser);
+  sendSystemMessage(`${avatar} ${name} sohbete katıldı!`);
+  loadMessages();
+  startPolling();
+  setupInput();
+}
+
+async function logout() {
+  if (currentUser) {
+    await setTyping(currentUser.name, false);
+    await removeOnlineUser(currentUser.name);
+    await sendSystemMessage(`👋 ${currentUser.avatar} ${currentUser.name} ayrıldı.`);
+  }
+  clearInterval(pollInterval);
+  currentUser = null;
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('nameInput').value = '';
+  lastSender = null;
+}
+
+async function sendSystemMessage(text) {
+  const msgs = await getMessages();
+  msgs.push({ type: 'system', text, ts: Date.now() });
+  await saveMessages(msgs);
+}
+
+async function sendMessage() {
+  const input = document.getElementById('msgInput');
+  const text = input.value.trim();
+  if (!text || !currentUser) return;
+  input.value = '';
+  input.style.height = 'auto';
+
+  await setTyping(currentUser.name, false);
+  clearTimeout(typingTimer);
+
+  const msgs = await getMessages();
+  msgs.push({
+    type: 'user',
+    author: currentUser.name,
+    avatar: currentUser.avatar,
+    text,
+    ts: Date.now()
+  });
+  await saveMessages(msgs);
+  await loadMessages();
+}
+
+async function loadMessages() {
+  const msgs = await getMessages();
+  if (msgs.length === lastMsgCount) return;
+  lastMsgCount = msgs.length;
+
+  const container = document.getElementById('messagesContainer');
+  container.innerHTML = '<div class="day-divider">Bugün</div><div class="sys-msg">🎉 Chat\'e hoş geldiniz! Burası ortak sohbet alanı.</div>';
+
+  let prevAuthor = null;
+  let currentGroup = null;
+
+  msgs.forEach(msg => {
+    if (msg.type === 'system') {
+      const div = document.createElement('div');
+      div.className = 'sys-msg';
+      div.textContent = msg.text;
+      container.appendChild(div);
+      prevAuthor = null;
+      currentGroup = null;
+    } else {
+      const isOwn = msg.author === currentUser?.name;
+      const time = new Date(msg.ts).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+
+      if (msg.author !== prevAuthor) {
+        currentGroup = document.createElement('div');
+        currentGroup.className = 'msg-group' + (isOwn ? ' own' : '');
+
+        const header = document.createElement('div');
+        header.className = 'msg-group-header';
+
+        const avatarDiv = document.createElement('div');
+        avatarDiv.className = 'msg-avatar';
+        avatarDiv.textContent = msg.avatar;
+
+        const authorSpan = document.createElement('span');
+        authorSpan.className = 'msg-author';
+        authorSpan.style.color = isOwn ? 'var(--accent)' : getColorForName(msg.author);
+        authorSpan.textContent = msg.author;
+
+        const timeSpan = document.createElement('span');
+        timeSpan.className = 'msg-time';
+        timeSpan.textContent = time;
+
+        header.appendChild(avatarDiv);
+        header.appendChild(authorSpan);
+        header.appendChild(timeSpan);
+        currentGroup.appendChild(header);
+        container.appendChild(currentGroup);
+        prevAuthor = msg.author;
+      }
+
+      const bubble = document.createElement('div');
+      bubble.className = 'msg-bubble' + (isOwn ? ' own' : '');
+      bubble.textContent = msg.text;
+      currentGroup.appendChild(bubble);
+    }
+  });
+
+  container.scrollTop = container.scrollHeight;
+
+  // Update online
+  await updateOnlineUsers();
+}
+
+function getColorForName(name) {
+  const colors = ['#7b5ea7','#3ecfcf','#f7c59f','#e8a0bf','#84dcc6','#a0c4ff','#ffd166','#ef476f'];
+  let hash = 0;
+  for (let c of name) hash = (hash * 31 + c.charCodeAt(0)) % colors.length;
+  return colors[hash];
+}
+
+async function updateOnlineUsers() {
+  const online = await getOnlineUsers();
+  const now = Date.now();
+  const activeUsers = Object.values(online).filter(u => now - u.ts < 30000);
+
+  // Update count
+  document.getElementById('onlineCountDisplay').textContent = `${activeUsers.length} çevrimiçi`;
+
+  // Update members list
+  const list = document.getElementById('membersList');
+  list.innerHTML = '';
+  activeUsers.forEach(u => {
+    const item = document.createElement('div');
+    item.className = 'member-item';
+    item.innerHTML = `
+      <div class="member-avatar" style="position:relative">
+        ${u.avatar}
+        <div class="member-online-indicator"></div>
+      </div>
+      <span class="member-name">${u.name}</span>
+      ${u.name === currentUser?.name ? '<span class="member-you">sen</span>' : ''}
+    `;
+    list.appendChild(item);
+  });
+}
+
+async function updateTypingIndicator() {
+  if (!currentUser) return;
+  const typing = await getTyping();
+  const now = Date.now();
+  const others = Object.entries(typing)
+    .filter(([name, ts]) => name !== currentUser.name && now - ts < 4000)
+    .map(([name]) => name);
+
+  const indicator = document.getElementById('typingIndicator');
+  const text = document.getElementById('typingText');
+  if (others.length > 0) {
+    indicator.classList.remove('hidden');
+    text.textContent = others.length === 1
+      ? `${others[0]} yazıyor...`
+      : `${others.join(', ')} yazıyor...`;
+  } else {
+    indicator.classList.add('hidden');
+  }
+}
+
+function setupInput() {
+  const input = document.getElementById('msgInput');
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+  input.addEventListener('input', () => {
+    // Auto resize
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+
+    // Typing indicator
+    if (currentUser) {
+      setTyping(currentUser.name, true);
+      clearTimeout(typingTimer);
+      typingTimer = setTimeout(() => setTyping(currentUser.name, false), 3000);
+    }
+  });
+}
+
+function startPolling() {
+  if (currentUser) setOnlineUser(currentUser);
+  loadMessages();
+  updateTypingIndicator();
+
+  pollInterval = setInterval(async () => {
+    if (currentUser) await setOnlineUser(currentUser);
+    await loadMessages();
+    await updateTypingIndicator();
+  }, 1500);
+}
+
+// Heartbeat on unload
+window.addEventListener('beforeunload', async () => {
+  if (currentUser) {
+    await setTyping(currentUser.name, false);
+    await removeOnlineUser(currentUser.name);
+  }
+});
+</script>
+</body>
+</html>
