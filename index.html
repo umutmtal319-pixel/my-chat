@@ -863,15 +863,90 @@ function switchChannel(id,name,desc){
   document.querySelectorAll('.channel-item').forEach(el=>el.classList.toggle('active',el.querySelector('span:nth-child(2)')?.textContent===name));
 }
 
+
+// ── KÜFÜR BOT ──
+const KUFURLER = [
+  // Türkçe küfürler
+  'orospu','oç','oc','göt','got','sik','sikim','sikeyim','amk','amına','amina',
+  'bok','orospu','piç','pic','kahpe','kaltak','sürtük','surtuk','ibne','oğlan',
+  'meme','yarrak','yarak','götveren','orosbuçocuğu','ananı','ananin','baban',
+  'sekerim','götveren','siktir','siktirgit','ananısikeyim','oruspu',
+  'pezevenk','orosbuçocuğu','hassiktir','haysiyetsiz','gerizekalı','geri zekalı',
+  // İngilizce
+  'fuck','shit','bitch','ass','dick','pussy','cunt','bastard','motherfucker','nigga','nigger','faggot'
+];
+
+// Kullanıcı uyarı sayaçları: {username: count}
+const kufurSayac = {};
+const KUFUR_LIMIT = 5; // kaç küfürden sonra mesajları silinsin
+const BOT_NAME = '🤖 ModBot';
+
+function kufurVarMi(text) {
+  if(!text) return false;
+  const lower = text.toLowerCase().replace(/[*_.\-]/g,''); // bypass girişimlerini temizle
+  return KUFURLER.some(k => lower.includes(k));
+}
+
+async function botKufurKontrol(key, msg) {
+  if(msg.type !== 'user' || !msg.text) return;
+  if(msg.author === BOT_NAME) return;
+  if(!kufurVarMi(msg.text)) return;
+
+  const user = msg.author;
+  kufurSayac[user] = (kufurSayac[user] || 0) + 1;
+  const sayac = kufurSayac[user];
+
+  if(sayac >= KUFUR_LIMIT) {
+    // Tüm mesajlarını sil
+    const snap = await get(ref(db, `messages/${currentChannel}`));
+    const data = snap.val() || {};
+    const delKeys = Object.entries(data)
+      .filter(([k,m]) => m.author === user)
+      .map(([k]) => k);
+    await Promise.all(delKeys.map(k => remove(ref(db, `messages/${currentChannel}/${k}`))));
+    kufurSayac[user] = 0;
+    push(ref(db, `messages/${currentChannel}`), {
+      type: 'system',
+      text: `🤖 ModBot: ${user} art arda ${KUFUR_LIMIT} küfür yaptığı için tüm mesajları silindi ve susturuldu.`,
+      ts: Date.now()
+    });
+    // Otomatik sustur
+    set(ref(db, `muted/${user}`), {by: BOT_NAME, ts: Date.now()});
+  } else {
+    // Uyarı ver, mesajı sil
+    await remove(ref(db, `messages/${currentChannel}/${key}`));
+    push(ref(db, `messages/${currentChannel}`), {
+      type: 'system',
+      text: `🤖 ModBot: ${user}, küfür etme! Uyarı ${sayac}/${KUFUR_LIMIT}. ${KUFUR_LIMIT - sayac} hakkın kaldı.`,
+      ts: Date.now()
+    });
+  }
+}
+
 // ── MESSAGES ──
 const MSG_LIMIT = 80;
+let lastSeenMsgKey = null;
 function listenMessages(){
   if(unsubMessages) unsubMessages();
+  lastSeenMsgKey = null;
   const msgsQuery = query(ref(db,`messages/${currentChannel}`), orderByKey(), limitToLast(MSG_LIMIT));
   unsubMessages=onValue(msgsQuery, snapshot=>{
     const data=snapshot.val()||{};
     const entries=Object.entries(data).sort((a,b)=>a[1].ts-b[1].ts);
     renderMessages(entries);
+    // Bot kontrolü: sadece kurucu için çalışsın (ya da her zaman — ama DB yazma yetkisi lazım)
+    // Yeni gelen mesajları kontrol et
+    if(currentUser?.role==='owner'){
+      entries.forEach(([key,msg])=>{
+        if(lastSeenMsgKey && key > lastSeenMsgKey){
+          botKufurKontrol(key, msg);
+        }
+      });
+    }
+    // En son key'i güncelle
+    if(entries.length > 0){
+      lastSeenMsgKey = entries[entries.length-1][0];
+    }
   });
 }
 function renderMessages(entries){
