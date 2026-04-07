@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Chat 💬</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <style>
@@ -320,12 +320,35 @@ header{background:var(--surface);border-bottom:2px solid var(--border);padding:0
 .slowmode-inline.active{display:flex;}
 .slowmode-inline.blocking{color:#ef476f;}
 .hidden{display:none!important;}
-@media(max-width:600px){.sidebar{display:none}header{padding:0 10px}#messagesContainer{padding:9px}.input-area{padding:5px 9px 11px}.bored-btn span{display:none}}
+/* MOBİL */
+@media(max-width:768px){
+  .sidebar{position:fixed;left:-240px;top:0;height:100vh;z-index:150;transition:left 0.25s ease;width:220px;}
+  .sidebar.open{left:0;box-shadow:4px 0 20px rgba(0,0,0,0.5);}
+  .sidebar-overlay{display:none;position:fixed;inset:0;z-index:140;background:rgba(0,0,0,0.5);}
+  .sidebar-overlay.show{display:block;}
+  header{padding:0 10px;}
+  #messagesContainer{padding:9px 10px;}
+  .input-area{padding:5px 9px 11px;}
+  .bored-btn span{display:none;}
+  .msg-bubble{max-width:85%;}
+  .msg-actions{opacity:1!important;position:static;flex-wrap:wrap;}
+  .msg-bw{flex-direction:column;gap:4px;}
+  .msg-group.own .msg-bw{align-items:flex-end;}
+  .modal{padding:18px 14px;}
+  .attach-bar{padding:6px 9px 0;}
+  .emoji-picker{right:8px;width:calc(100vw - 16px);}
+}
+@media(max-width:400px){
+  .header-logo{font-size:1rem;}
+  .bored-btn{padding:5px 8px;font-size:0.72rem;}
+  .role-badge{display:none;}
+}
 </style>
 </head>
 <body>
 
 <!-- LOGIN -->
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
 <div id="loginScreen">
   <div class="login-box">
     <span class="login-emoji">💬</span>
@@ -361,6 +384,7 @@ header{background:var(--surface);border-bottom:2px solid var(--border);padding:0
 <div id="app">
   <header>
     <div style="display:flex;align-items:center;gap:9px">
+      <button id="sidebarToggle" onclick="toggleSidebar()" style="background:none;border:none;color:var(--text);font-size:20px;cursor:pointer;padding:4px;display:none">☰</button>
       <div class="header-logo"><div class="logo-dot"></div>Chat</div>
       <span id="activeChanBadge" style="background:var(--card);border:1.5px solid var(--border);border-radius:6px;padding:3px 9px;font-size:0.73rem;color:var(--muted);font-weight:700;font-family:'Space Mono',monospace">#genel</span>
     </div>
@@ -734,6 +758,19 @@ document.getElementById('editTitleInput').addEventListener('input', updateTitleP
 // ── ROLE SELECT ──
 window.selectRole=(role,el)=>{ document.querySelectorAll('.role-opt').forEach(x=>x.classList.remove('selected')); el.classList.add('selected'); document.getElementById('ownerCodeWrap').classList.toggle('show',role==='owner'); };
 window.closeModal=id=>document.getElementById(id).classList.add('hidden');
+// Ekran boyutuna göre toggle butonunu göster/gizle
+function checkMobile(){
+  const btn=document.getElementById('sidebarToggle');
+  if(btn) btn.style.display=window.innerWidth<=768?'block':'none';
+}
+window.addEventListener('resize',checkMobile);
+checkMobile();
+window.toggleSidebar=()=>{
+  const sb=document.querySelector('.sidebar');
+  const ov=document.getElementById('sidebarOverlay');
+  sb.classList.toggle('open');
+  ov.classList.toggle('show');
+};
 ['addChannelModal','profileModal','editProfileModal','boredModal','pollModal','ownerToolsModal','announceModal','confirmModal','slowModeModal','roleModal'].forEach(id=>{
   document.getElementById(id).addEventListener('click',e=>{ if(e.target.id===id) window.closeModal(id); });
 });
@@ -786,6 +823,21 @@ function setupOnlinePresence(){
   set(myOnlineRef,{...currentUser,ts:Date.now()});
   onDisconnect(myOnlineRef).remove();
   presenceInterval=setInterval(()=>{ if(currentUser&&myOnlineRef) set(myOnlineRef,{...currentUser,ts:Date.now()}); },10000);
+  // Kendi rolü değişirse otomatik güncelle
+  onValue(myOnlineRef, snap=>{
+    const d=snap.val(); if(!d||!currentUser) return;
+    if(d.role && d.role !== currentUser.role){
+      currentUser.role = d.role;
+      // Header badge güncelle
+      const rb=document.getElementById('headerRoleBadge');
+      rb.className=`role-badge ${d.role}`;
+      rb.textContent=d.role==='owner'?'👑 kurucu':'👤 üye';
+      // Araçlar butonu
+      const ownerBtn=document.getElementById('ownerToolsBtn');
+      if(d.role==='owner') ownerBtn.classList.remove('hidden');
+      else ownerBtn.classList.add('hidden');
+    }
+  });
 }
 
 window.logout=()=>{
@@ -926,17 +978,18 @@ async function botKufurKontrol(key, msg) {
 // ── MESSAGES ──
 const MSG_LIMIT = 80;
 let lastSeenMsgKey = null;
+let isFirstLoad = true;
 function listenMessages(){
   if(unsubMessages) unsubMessages();
   lastSeenMsgKey = null;
+  isFirstLoad = true;
   const msgsQuery = query(ref(db,`messages/${currentChannel}`), orderByKey(), limitToLast(MSG_LIMIT));
   unsubMessages=onValue(msgsQuery, snapshot=>{
     const data=snapshot.val()||{};
     const entries=Object.entries(data).sort((a,b)=>a[1].ts-b[1].ts);
     renderMessages(entries);
-    // Bot kontrolü: sadece kurucu için çalışsın (ya da her zaman — ama DB yazma yetkisi lazım)
-    // Yeni gelen mesajları kontrol et
-    if(currentUser?.role==='owner'){
+    // Bot: ilk yüklemede sadece key'i kaydet, kontrol etme
+    if(!isFirstLoad && currentUser?.role==='owner'){
       entries.forEach(([key,msg])=>{
         if(lastSeenMsgKey && key > lastSeenMsgKey){
           botKufurKontrol(key, msg);
@@ -947,6 +1000,7 @@ function listenMessages(){
     if(entries.length > 0){
       lastSeenMsgKey = entries[entries.length-1][0];
     }
+    isFirstLoad = false;
   });
 }
 function renderMessages(entries){
@@ -1060,6 +1114,11 @@ function appendMsgActions(wrap,key,msg,isOwn){
     editBtn.onclick=()=>startEditMsg(wrap,key,msg);
     actions.insertBefore(editBtn, actions.firstChild);
   }
+  // Mobil touch desteği
+  wrap.addEventListener('touchstart',()=>{
+    document.querySelectorAll('.msg-actions').forEach(a=>{ if(a!==actions) a.style.opacity='0'; });
+    actions.style.opacity = actions.style.opacity==='1'?'0':'1';
+  },{passive:true});
   wrap.appendChild(actions);
 }
 
@@ -1426,8 +1485,16 @@ window.confirmRoleChange=async()=>{
   const u=snap.val(); if(!u) return;
   set(ref(db,`online/${roleModalTarget}`),{...u,role:roleModalSelected});
   push(ref(db,`messages/${currentChannel}`),{type:'system',text:`🎭 ${roleModalTarget} rolü ${roleModalSelected==='owner'?'👑 Kurucu':'👤 Üye'} olarak değiştirildi.`,ts:Date.now()});
-  // If changing own role
-  if(roleModalTarget===currentUser.name){currentUser.role=roleModalSelected;if(myOnlineRef)set(myOnlineRef,{...currentUser,ts:Date.now()});}
+  // If changing own role — header güncelle
+  if(roleModalTarget===currentUser.name){
+    currentUser.role=roleModalSelected;
+    if(myOnlineRef) set(myOnlineRef,{...currentUser,ts:Date.now()});
+    const rb=document.getElementById('headerRoleBadge');
+    rb.className=`role-badge ${roleModalSelected}`;
+    rb.textContent=roleModalSelected==='owner'?'👑 kurucu':'👤 üye';
+    if(roleModalSelected==='owner') document.getElementById('ownerToolsBtn').classList.remove('hidden');
+    else document.getElementById('ownerToolsBtn').classList.add('hidden');
+  }
   closeModal('roleModal');
 };
 
