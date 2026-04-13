@@ -1,0 +1,1098 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Chat 💬</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<!-- WebRTC Kütüphaneleri -->
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/simple-peer/9.11.1/simplepeer.min.js"></script>
+<style>
+:root{--bg:#0f0e17;--surface:#1a1927;--card:#22213a;--accent:#ff6b35;--accent2:#7b5ea7;--accent3:#3ecfcf;--text:#fffffe;--muted:#a7a9be;--border:#2e2d4a;--owner:#ffd700;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+
+/* --- MOBİL UYUMLULUK EKLEMELERİ --- */
+@media (max-width: 768px) {
+  body { height: 100dvh; } /* Dynamic viewport height for mobile browsers */
+  #app { height: 100dvh; }
+  
+  .sidebar { position: fixed; left: -260px; top: 0; bottom: 0; z-index: 10000; transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1); width: 260px !important; background: var(--surface); box-shadow: 20px 0 50px rgba(0,0,0,0.8); height: 100dvh; }
+  .sidebar.open { left: 0; }
+  #sidebarToggle { display: flex !important; align-items: center; justify-content: center; }
+  .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 9999; backdrop-filter: blur(4px); }
+  .sidebar-overlay.show { display: block; }
+  
+  header { height: 50px; padding: 0 10px; gap: 5px; }
+  .header-logo { font-size: 1rem; gap: 4px; }
+  .logo-dot { width: 6px; height: 6px; }
+  #activeChanBadge { display: none; } /* Mobilde üstte kanal adını gizle, zaten chat-header'da var */
+  
+  .header-right { gap: 5px; }
+  .online-count { font-size: 0.7rem; }
+  .online-dot { width: 6px; height: 6px; }
+  .user-chip { padding: 2px 6px 2px 2px; gap: 4px; max-width: 100px; }
+  .user-chip span#headerName { font-size: 0.7rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chip-pp { width: 24px; height: 24px; }
+  #headerRoleBadge { display: none; } /* Mobilde rolü gizle yer kazanalım */
+  .bored-btn { padding: 4px 8px; font-size: 0.75rem; }
+  .bored-btn span { display: none; }
+  
+  .chat-header { padding: 8px 12px; height: 45px; }
+  .chat-header-name { font-size: 0.85rem; }
+  .chat-header-desc { display: none; }
+  .owner-tools-btn { padding: 3px 7px; font-size: 0.65rem; }
+  
+  #messagesContainer { padding: 10px 12px; }
+  .msg-bubble { max-width: 90% !important; font-size: 0.85rem; padding: 6px 10px; }
+  .msg-avatar { width: 28px; height: 28px; font-size: 16px; }
+  .msg-author { font-size: 0.8rem; }
+  .msg-time { font-size: 0.6rem; }
+  .msg-bubble.own { margin-left: auto; }
+  .msg-img { max-width: 220px; margin-left: 32px; }
+  .msg-img.own { margin-left: auto; }
+  
+  .input-area { padding: 8px 10px; background: var(--bg); position: relative; z-index: 1000; }
+  .input-box { padding: 6px 10px; border-radius: 24px; gap: 4px; background: var(--card); border: 2px solid var(--border); display: flex; align-items: center; }
+  #msgInput { font-size: 1rem !important; padding: 8px 0; max-height: 100px; flex: 1; background: transparent; border: none; color: var(--text); outline: none; }
+  .icon-btn { font-size: 20px; padding: 8px; cursor: pointer; }
+  .send-btn { width: 40px; height: 40px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; background: var(--accent); }
+  
+  .voice-controls { padding: 8px; gap: 10px; position: relative; z-index: 1001; background: var(--surface); border-top: 1px solid var(--border); }
+  .v-ctrl-btn { width: 36px; height: 36px; font-size: 16px; }
+  .v-ctrl-btn.leave { padding: 0 12px; font-size: 0.75rem; height: 36px; border-radius: 18px; }
+  
+  #videoGrid { 
+    position: absolute; 
+    top: 0; 
+    left: 0; 
+    right: 0; 
+    max-height: 200px; 
+    z-index: 50; 
+    background: rgba(26, 25, 39, 0.95); 
+    backdrop-filter: blur(10px);
+    border-bottom: 2px solid var(--accent3);
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  }
+  
+  /* VideoGrid aktifken mesajların üstten boşluk bırakması için */
+  #videoGrid.active + .chat-header + #messagesContainer,
+  #videoGrid.active ~ #messagesContainer {
+    margin-top: 0; /* JS ile dinamik ayarlanacak veya sabit padding verilecek */
+  }
+}
+
+/* --- SESLİ ODA EKLEMELERİ --- */
+.voice-room-item { display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 8px; cursor: pointer; transition: background 0.2s; color: var(--muted); font-weight: 700; font-size: 0.85rem; }
+.voice-room-item:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+.voice-room-item.active { background: rgba(62, 207, 207, 0.1); color: var(--accent3); }
+#videoGrid { display: none !important; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; padding: 8px; background: var(--surface); border-bottom: 2px solid var(--border); max-height: 250px; overflow-y: auto; z-index: 5; }
+#videoGrid.active { display: grid !important; }
+.video-container { position: relative; aspect-ratio: 16/9; background: #000; border-radius: 10px; overflow: hidden; border: 1.5px solid var(--border); }
+.video-container video { width: 100%; height: 100%; object-fit: cover; }
+.video-label { position: absolute; bottom: 5px; left: 5px; background: rgba(0,0,0,0.6); padding: 1px 6px; border-radius: 4px; font-size: 0.65rem; font-weight: 700; }
+.voice-controls { display: none !important; align-items: center; justify-content: center; gap: 12px; padding: 8px; background: var(--card); border-top: 1.5px solid var(--border); z-index: 5; }
+.voice-controls.active { display: flex !important; }
+.v-ctrl-btn { width: 36px; height: 36px; border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 16px; transition: all 0.2s; background: var(--surface); color: var(--text); }
+.v-ctrl-btn.off { background: #ef476f; color: #fff; }
+.v-ctrl-btn.leave { background: #ef476f; color: #fff; width: auto; padding: 0 12px; border-radius: 18px; font-size: 0.75rem; font-weight: 800; }
+
+/* LOGIN */
+#loginScreen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:9999;overflow-y:auto;padding:20px 0;}
+.login-box{background:var(--surface);border:2px solid var(--border);border-radius:24px;padding:32px 28px;width:min(440px,94vw);text-align:center;position:relative;overflow:hidden;margin:auto;}
+.login-box::before{content:'';position:absolute;top:-60px;right:-60px;width:180px;height:180px;background:radial-gradient(circle,var(--accent2) 0%,transparent 70%);opacity:0.35;pointer-events:none;}
+.login-emoji{font-size:48px;display:block;margin-bottom:6px;animation:bounce 2s ease-in-out infinite;}
+@keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+.login-title{font-size:1.7rem;font-weight:900;margin-bottom:3px;letter-spacing:-1px;}
+.login-subtitle{color:var(--muted);margin-bottom:18px;font-size:0.86rem;}
+.login-label{display:block;text-align:left;font-size:0.7rem;font-weight:700;letter-spacing:1px;color:var(--muted);text-transform:uppercase;margin-bottom:5px;}
+.login-input{width:100%;background:var(--card);border:2px solid var(--border);border-radius:10px;padding:10px 13px;color:var(--text);font-family:'Nunito',sans-serif;font-size:0.9rem;font-weight:600;outline:none;transition:border-color 0.2s;margin-bottom:11px;}
+.login-input:focus{border-color:var(--accent);}
+
+/* PP UPLOAD AREA */
+.pp-upload-area{width:100%;background:var(--card);border:2px dashed var(--border);border-radius:14px;padding:16px;margin-bottom:14px;cursor:pointer;transition:all 0.2s;display:flex;flex-direction:column;align-items:center;gap:8px;}
+.pp-upload-area:hover{border-color:var(--accent);background:rgba(255,107,53,0.05);}
+.pp-upload-area.has-photo{border-style:solid;border-color:var(--accent);}
+.pp-preview-big{width:72px;height:72px;border-radius:50%;border:3px solid var(--border);object-fit:cover;font-size:36px;display:flex;align-items:center;justify-content:center;background:var(--surface);overflow:hidden;}
+.pp-preview-big img{width:100%;height:100%;object-fit:cover;border-radius:50%;}
+.pp-upload-text{font-size:0.82rem;font-weight:700;color:var(--muted);}
+.pp-upload-hint{font-size:0.7rem;color:var(--muted);opacity:0.7;}
+#photoFileInput{display:none;}
+
+/* AVATAR PICKER */
+.avatar-picker{display:flex;gap:5px;flex-wrap:wrap;justify-content:center;margin-bottom:14px;}
+.avatar-btn{width:36px;height:36px;border-radius:50%;border:2px solid var(--border);background:var(--card);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.15s;}
+.avatar-btn:hover{transform:scale(1.15);}
+.avatar-btn.selected{border-color:var(--accent);background:rgba(255,107,53,0.15);transform:scale(1.1);}
+.role-select{display:flex;gap:7px;margin-bottom:11px;}
+.role-opt{flex:1;padding:7px;background:var(--card);border:2px solid var(--border);border-radius:9px;cursor:pointer;font-size:0.78rem;font-weight:700;color:var(--muted);text-align:center;transition:all 0.15s;}
+.role-opt.selected{border-color:var(--accent);color:var(--accent);background:rgba(255,107,53,0.1);}
+.owner-code-wrap{display:none;}
+.owner-code-wrap.show{display:block;}
+.login-btn{width:100%;padding:12px;background:var(--accent);color:#fff;border:none;border-radius:10px;font-family:'Nunito',sans-serif;font-size:1rem;font-weight:800;cursor:pointer;transition:transform 0.15s,box-shadow 0.15s;}
+.login-btn:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(255,107,53,0.35);}
+
+/* APP */
+#app{display:none;flex-direction:column;height:100vh;}
+header{background:var(--surface);border-bottom:2px solid var(--border);padding:0 16px;height:56px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;z-index:10;}
+.header-logo{font-size:1.25rem;font-weight:900;letter-spacing:-1px;display:flex;align-items:center;gap:6px;}
+.logo-dot{width:8px;height:8px;background:var(--accent);border-radius:50%;animation:pulse 2s ease-in-out infinite;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.6;transform:scale(0.8)}}
+.header-right{display:flex;align-items:center;gap:7px;}
+.online-count{display:flex;align-items:center;gap:5px;font-size:0.78rem;font-weight:700;color:var(--accent3);}
+.online-dot{width:7px;height:7px;background:var(--accent3);border-radius:50%;animation:pulse 1.5s ease-in-out infinite;}
+.user-chip{display:flex;align-items:center;gap:6px;background:var(--card);border:1.5px solid var(--border);border-radius:18px;padding:4px 10px 4px 4px;cursor:pointer;transition:border-color 0.2s;}
+.user-chip:hover{border-color:var(--accent);}
+.chip-pp{width:28px;height:28px;border-radius:50%;border:1.5px solid var(--border);object-fit:cover;font-size:16px;display:flex;align-items:center;justify-content:center;background:var(--card);overflow:hidden;flex-shrink:0;}
+.chip-pp img{width:100%;height:100%;object-fit:cover;border-radius:50%;}
+.role-badge{font-size:0.58rem;font-weight:800;padding:2px 5px;border-radius:4px;letter-spacing:0.5px;text-transform:uppercase;background:rgba(255,215,0,0.15);color:var(--owner);border:1px solid rgba(255,215,0,0.3);}
+.role-badge.member{background:rgba(167,169,190,0.1);color:#a7a9be;border-color:rgba(167,169,190,0.2);}
+.bored-btn{display:flex;align-items:center;gap:4px;background:linear-gradient(135deg,#7b5ea7,#3ecfcf);border:none;border-radius:18px;padding:5px 12px;color:#fff;font-family:'Nunito',sans-serif;font-size:0.8rem;font-weight:800;cursor:pointer;transition:transform 0.15s,box-shadow 0.15s;}
+.bored-btn:hover{transform:translateY(-2px);box-shadow:0 5px 15px rgba(123,94,167,0.4);}
+
+/* PINNED BAR */
+.pinned-bar{background:rgba(255,215,0,0.07);border-bottom:1px solid rgba(255,215,0,0.2);padding:7px 16px;display:flex;align-items:center;gap:8px;flex-shrink:0;cursor:pointer;}
+.pinned-bar:hover{background:rgba(255,215,0,0.12);}
+.pinned-icon{font-size:14px;}
+.pinned-text{font-size:0.78rem;font-weight:700;color:var(--owner);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.pinned-close{font-size:12px;color:var(--muted);cursor:pointer;padding:2px 5px;}
+
+.main-layout{display:flex;flex:1;overflow:hidden;}
+
+/* SIDEBAR */
+.sidebar{width:220px;background:var(--surface);border-right:2px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;}
+.sidebar-section{padding:12px 12px 4px;}
+.sidebar-label{font-size:0.65rem;font-weight:700;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;margin-bottom:6px;padding:0 3px;display:flex;align-items:center;justify-content:space-between;}
+.add-ch-btn{width:18px;height:18px;background:var(--card);border:1.5px solid var(--border);border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--muted);transition:all 0.15s;}
+.add-ch-btn:hover{border-color:var(--accent);color:var(--accent);}
+.channel-item{display:flex;align-items:center;gap:5px;padding:7px 8px;border-radius:8px;cursor:pointer;transition:background 0.15s;font-weight:700;font-size:0.84rem;color:var(--muted);}
+.channel-item.active{background:rgba(255,107,53,0.12);color:var(--accent);}
+.channel-item:hover:not(.active){background:rgba(255,255,255,0.04);color:var(--text);}
+.ch-hash{font-family:'Space Mono',monospace;font-size:0.88rem;opacity:0.7;}
+.ch-del{margin-left:auto;opacity:0;font-size:11px;color:#ef476f;transition:opacity 0.15s;}
+.channel-item:hover .ch-del{opacity:1;}
+.sidebar-divider{height:1px;background:var(--border);margin:5px 12px;}
+.members-list{flex:1;overflow-y:auto;padding:0 8px 8px;}
+.member-item{display:flex;align-items:center;gap:7px;padding:6px 6px;border-radius:7px;cursor:pointer;transition:background 0.15s;}
+.member-item:hover{background:rgba(255,255,255,0.04);}
+.member-av-wrap{position:relative;width:28px;height:28px;flex-shrink:0;}
+.member-av{width:28px;height:28px;border-radius:50%;font-size:18px;display:flex;align-items:center;justify-content:center;background:var(--card);overflow:hidden;}
+.member-av img{width:100%;height:100%;object-fit:cover;border-radius:50%;}
+.m-online-dot{position:absolute;bottom:-1px;right:-1px;width:8px;height:8px;background:var(--accent3);border-radius:50%;border:1.5px solid var(--surface);}
+.member-info{flex:1;min-width:0;}
+.member-name{font-size:0.78rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.member-title-text{font-size:0.6rem;font-weight:700;}
+.kick-btn{font-size:11px;color:#ef476f;cursor:pointer;opacity:0;padding:2px 4px;border-radius:4px;transition:opacity 0.15s;}
+.member-item:hover .kick-btn{opacity:1;}
+
+/* CHAT */
+.chat-area{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--bg);}
+.chat-header{padding:11px 16px;border-bottom:2px solid var(--border);background:var(--surface);display:flex;align-items:center;gap:7px;flex-shrink:0;}
+.chat-header-hash{font-family:'Space Mono',monospace;font-size:1.05rem;color:var(--accent);}
+.chat-header-name{font-weight:800;font-size:0.95rem;}
+.chat-header-right{margin-left:auto;display:flex;align-items:center;gap:8px;}
+.chat-header-desc{font-size:0.73rem;color:var(--muted);}
+.owner-tools-btn{background:rgba(255,215,0,0.1);border:1px solid rgba(255,215,0,0.25);border-radius:7px;padding:4px 9px;font-size:0.75rem;font-weight:800;color:var(--owner);cursor:pointer;transition:all 0.15s;}
+.owner-tools-btn:hover{background:rgba(255,215,0,0.2);}
+
+#messagesContainer{flex:1;overflow-y:auto;padding:13px 16px;display:flex;flex-direction:column;gap:2px;scroll-behavior:smooth;}
+#messagesContainer::-webkit-scrollbar{width:4px;}
+#messagesContainer::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
+.day-divider{display:flex;align-items:center;gap:9px;margin:9px 0 4px;color:var(--muted);font-size:0.68rem;font-weight:700;}
+.day-divider::before,.day-divider::after{content:'';flex:1;height:1px;background:var(--border);}
+.msg-group{display:flex;flex-direction:column;gap:2px;margin-bottom:5px;}
+.msg-group-header{display:flex;align-items:center;gap:7px;margin-bottom:2px;}
+.msg-avatar{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer;font-size:18px;overflow:hidden;background:var(--card);}
+.msg-avatar:hover{transform:scale(1.1);}
+.msg-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%;}
+.msg-author{font-weight:800;font-size:0.86rem;cursor:pointer;}
+.msg-author:hover{text-decoration:underline;}
+.msg-time{font-size:0.67rem;color:var(--muted);font-family:'Space Mono',monospace;}
+.msg-title-tag{font-size:0.6rem;font-weight:800;padding:1px 6px;border-radius:4px;margin-left:5px;display:inline-block;animation:titleGlow 2.5s ease-in-out infinite;}
+@keyframes titleGlow{0%,100%{filter:brightness(1) }50%{filter:brightness(1.4) drop-shadow(0 0 4px currentColor)}}
+
+/* MSG BUBBLE */
+.msg-bw{position:relative;display:flex;align-items:flex-start;gap:3px;}
+.msg-bubble{margin-left:39px;background:var(--card);border:1.5px solid var(--border);border-radius:4px 11px 11px 11px;padding:7px 11px;max-width:68%;width:fit-content;font-size:0.88rem;font-weight:600;line-height:1.5;word-break:break-word;white-space:pre-wrap;animation:msgIn 0.17s ease;}
+@keyframes msgIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+.msg-bubble.own{background:var(--accent);border-color:transparent;border-radius:11px 4px 11px 11px;color:#fff;margin-left:auto;margin-right:0;}
+.msg-bubble.pinned-msg{border-color:rgba(255,215,0,0.4);background:rgba(255,215,0,0.06);}
+.msg-img{margin-left:39px;max-width:280px;max-height:220px;border-radius:11px;cursor:pointer;border:1.5px solid var(--border);display:block;object-fit:cover;animation:msgIn 0.17s ease;}
+.msg-img.own{margin-left:auto;margin-right:0;}
+
+/* DELETE MENU */
+.msg-actions{opacity:0;display:flex;gap:3px;align-items:center;flex-shrink:0;align-self:center;}
+.msg-bw:hover .msg-actions{opacity:1;}
+.msg-action-btn{font-size:11px;cursor:pointer;padding:3px 5px;border-radius:5px;background:var(--card);border:1px solid var(--border);color:var(--muted);transition:all 0.15s;white-space:nowrap;}
+.msg-action-btn:hover{border-color:var(--accent);color:var(--text);}
+.msg-action-btn.danger{color:#ef476f;}
+.msg-action-btn.danger:hover{border-color:#ef476f;background:rgba(239,71,111,0.1);}
+.msg-action-btn.pin-btn{color:var(--owner);}
+.msg-action-btn.pin-btn:hover{border-color:var(--owner);background:rgba(255,215,0,0.1);}
+
+.msg-group.own{align-items:flex-end;}
+.msg-group.own .msg-group-header{flex-direction:row-reverse;}
+.msg-group.own .msg-bubble{margin-left:0;}
+.msg-group.own .msg-bw{flex-direction:row-reverse;}
+.sys-msg{text-align:center;color:var(--muted);font-size:0.72rem;font-weight:700;padding:2px 0;}
+.announce-msg{text-align:center;background:rgba(255,215,0,0.08);border:1px solid rgba(255,215,0,0.2);border-radius:8px;padding:8px;margin:5px 0;font-size:0.85rem;font-weight:800;color:var(--owner);}
+
+/* POLL */
+.poll-bubble{margin-left:39px;background:var(--card);border:1.5px solid var(--border);border-radius:4px 11px 11px 11px;padding:11px 13px;max-width:72%;width:fit-content;animation:msgIn 0.17s ease;}
+.poll-bubble.own{margin-left:auto;margin-right:0;border-radius:11px 4px 11px 11px;}
+.poll-question{font-size:0.9rem;font-weight:800;margin-bottom:9px;}
+.poll-option{display:flex;align-items:center;gap:7px;margin-bottom:6px;}
+.poll-bar-wrap{flex:1;height:22px;background:rgba(255,255,255,0.06);border-radius:6px;overflow:hidden;position:relative;}
+.poll-bar{height:100%;background:var(--accent);border-radius:6px;transition:width 0.4s ease;}
+.poll-bar-label{position:absolute;inset:0;display:flex;align-items:center;padding:0 8px;font-size:0.76rem;font-weight:700;}
+.poll-vote-btn{font-size:0.72rem;font-weight:800;padding:3px 8px;border-radius:6px;border:1.5px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;transition:all 0.15s;white-space:nowrap;}
+.poll-vote-btn:hover{border-color:var(--accent);color:var(--accent);}
+.poll-vote-btn.voted{background:rgba(255,107,53,0.15);border-color:var(--accent);color:var(--accent);}
+.poll-total{font-size:0.68rem;color:var(--muted);margin-top:7px;}
+
+.typing-bar{height:23px;padding:0 16px;display:flex;align-items:center;flex-shrink:0;}
+.typing-text{font-size:0.72rem;color:var(--muted);font-style:italic;font-weight:600;}
+.typing-dots{display:inline-flex;gap:3px;margin-right:4px;}
+.typing-dots span{width:4px;height:4px;background:var(--muted);border-radius:50%;animation:td 1.2s ease-in-out infinite;}
+.typing-dots span:nth-child(2){animation-delay:0.2s}.typing-dots span:nth-child(3){animation-delay:0.4s}
+@keyframes td{0%,60%,100%{transform:translateY(0);opacity:0.4}30%{transform:translateY(-4px);opacity:1}}
+
+.input-area{padding:7px 16px 13px;flex-shrink:0;}
+.input-box{display:flex;align-items:center;gap:6px;background:var(--card);border:2px solid var(--border);border-radius:12px;padding:7px 11px;transition:border-color 0.2s;}
+.input-box:focus-within{border-color:var(--accent);}
+#msgInput{flex:1;background:none;border:none;outline:none;font-family:'Nunito',sans-serif;font-size:0.88rem;font-weight:600;color:var(--text);resize:none;max-height:150px;}
+#msgInput::placeholder{color:var(--muted);}
+.icon-btn{background:none;border:none;cursor:pointer;padding:4px;border-radius:6px;transition:background 0.15s,transform 0.1s;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;}
+.icon-btn:hover{background:rgba(255,255,255,0.06);transform:scale(1.1);}
+.send-btn{background:var(--accent);width:30px;height:30px;border-radius:8px;font-size:14px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform 0.1s,box-shadow 0.15s;flex-shrink:0;}
+.send-btn:hover{transform:scale(1.08);box-shadow:0 4px 10px rgba(255,107,53,0.4);}
+.emoji-picker{position:absolute;bottom:72px;right:16px;background:var(--surface);border:2px solid var(--border);border-radius:12px;padding:8px;display:flex;flex-wrap:wrap;gap:3px;width:250px;z-index:50;box-shadow:0 8px 30px rgba(0,0,0,0.4);}
+.emoji-option{font-size:18px;padding:4px;border-radius:6px;cursor:pointer;transition:background 0.1s,transform 0.1s;}
+.emoji-option:hover{background:rgba(255,255,255,0.08);transform:scale(1.2);}
+
+/* MODAL */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;z-index:200;backdrop-filter:blur(4px);padding:20px;}
+.modal{background:var(--surface);border:2px solid var(--border);border-radius:18px;padding:26px;width:min(420px,96vw);max-height:90vh;overflow-y:auto;}
+.modal h3{font-size:1.1rem;font-weight:900;margin-bottom:4px;}
+.modal p{color:var(--muted);font-size:0.81rem;margin-bottom:14px;}
+.modal-input{width:100%;background:var(--card);border:2px solid var(--border);border-radius:9px;padding:9px 12px;color:var(--text);font-family:'Nunito',sans-serif;font-size:0.88rem;font-weight:600;outline:none;margin-bottom:10px;}
+.modal-input:focus{border-color:var(--accent);}
+.modal-textarea{width:100%;background:var(--card);border:2px solid var(--border);border-radius:9px;padding:9px 12px;color:var(--text);font-family:'Nunito',sans-serif;font-size:0.88rem;font-weight:600;outline:none;margin-bottom:10px;resize:none;height:65px;}
+.modal-textarea:focus{border-color:var(--accent);}
+.modal-btns{display:flex;gap:8px;}
+.modal-btn{flex:1;padding:10px;border:none;border-radius:9px;font-family:'Nunito',sans-serif;font-size:0.86rem;font-weight:800;cursor:pointer;transition:transform 0.15s;}
+.modal-btn.primary{background:var(--accent);color:#fff;}
+.modal-btn.secondary{background:var(--card);color:var(--muted);border:1.5px solid var(--border);}
+.modal-btn.danger{background:rgba(239,71,111,0.15);color:#ef476f;border:1.5px solid rgba(239,71,111,0.3);}
+.modal-btn:hover{transform:translateY(-1px);}
+
+/* PROFILE */
+.profile-pp-big{width:72px;height:72px;border-radius:50%;border:3px solid var(--accent);font-size:40px;display:flex;align-items:center;justify-content:center;background:var(--card);margin:0 auto 8px;overflow:hidden;}
+.profile-pp-big img{width:100%;height:100%;object-fit:cover;border-radius:50%;}
+.profile-name{font-size:1.2rem;font-weight:900;text-align:center;margin-bottom:4px;}
+.profile-title-display{text-align:center;font-size:0.85rem;font-weight:800;margin-bottom:10px;padding:2px 10px;border-radius:6px;display:inline-block;}
+.profile-bio{background:var(--card);border:1.5px solid var(--border);border-radius:9px;padding:9px 12px;font-size:0.86rem;color:var(--muted);margin-bottom:14px;min-height:46px;}
+
+/* EDIT PROFILE */
+.edit-pp-row{display:flex;align-items:center;gap:12px;margin-bottom:14px;}
+.edit-pp-preview{width:60px;height:60px;border-radius:50%;border:2px solid var(--border);font-size:32px;display:flex;align-items:center;justify-content:center;background:var(--card);overflow:hidden;flex-shrink:0;}
+.edit-pp-preview img{width:100%;height:100%;object-fit:cover;border-radius:50%;}
+.edit-pp-btn{flex:1;padding:9px;background:var(--card);border:1.5px dashed var(--border);border-radius:9px;color:var(--muted);font-family:'Nunito',sans-serif;font-size:0.82rem;font-weight:700;cursor:pointer;transition:all 0.15s;text-align:center;}
+.edit-pp-btn:hover{border-color:var(--accent);color:var(--accent);}
+.grad-section{margin-bottom:12px;}
+.grad-section-label{font-size:0.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;}
+.grad-dots{display:flex;gap:6px;flex-wrap:wrap;}
+.grad-dot{width:22px;height:22px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:transform 0.1s;}
+.grad-dot:hover{transform:scale(1.2);}
+.grad-dot.selected{border-color:#fff;transform:scale(1.1);}
+.title-preview-wrap{background:var(--card);border:1.5px solid var(--border);border-radius:9px;padding:10px;text-align:center;}
+
+/* FILE BUBBLE */
+.file-bubble{margin-left:39px;background:var(--card);border:1.5px solid var(--border);border-radius:4px 11px 11px 11px;padding:9px 12px;display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit;max-width:260px;animation:msgIn 0.17s ease;}
+.file-bubble.own{margin-left:auto;margin-right:0;border-radius:11px 4px 11px 11px;}
+.file-icon{font-size:24px;}
+.file-info{flex:1;min-width:0;}
+.file-name{font-size:0.82rem;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.file-size{font-size:0.68rem;color:var(--muted);font-weight:700;}
+.file-dl{font-size:0.68rem;color:var(--accent);font-weight:800;margin-top:2px;}
+
+/* ATTACH BAR */
+.attach-bar{padding:8px 16px;background:var(--surface);border-top:1.5px solid var(--border);flex-shrink:0;}
+.attach-bar-inner{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;}
+.attach-item{width:50px;height:50px;border-radius:8px;background:var(--card);border:1.5px solid var(--border);flex-shrink:0;position:relative;display:flex;align-items:center;justify-content:center;font-size:20px;}
+.attach-item img{width:100%;height:100%;object-fit:cover;border-radius:7px;}
+.attach-del{position:absolute;top:-5px;right:-5px;width:18px;height:18px;background:#ef476f;color:#fff;border-radius:50%;font-size:11px;display:flex;align-items:center;justify-content:center;cursor:pointer;border:1.5px solid var(--surface);}
+.attach-bar-send{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:0 12px;font-family:Nunito,sans-serif;font-size:0.78rem;font-weight:800;cursor:pointer;flex-shrink:0;}
+
+/* IMG VIEWER */
+.img-viewer-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;cursor:zoom-out;}
+.img-viewer-overlay img{max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;box-shadow:0 0 40px rgba(0,0,0,0.5);}
+
+.hidden{display:none !important;}
+.slowmode-badge{background:rgba(255,107,53,0.1);border:1px solid rgba(255,107,53,0.3);border-radius:6px;padding:2px 7px;font-size:0.7rem;font-weight:800;color:var(--accent);display:none;align-items:center;gap:4px;}
+.slowmode-badge.active{display:flex;}
+.slowmode-inline{font-size:0.75rem;font-weight:800;color:var(--accent);margin-right:6px;display:none;}
+.slowmode-inline.active{display:inline;}
+.editing-input{width:calc(100% - 39px);background:var(--card);border:2px solid var(--accent);border-radius:9px;padding:8px 11px;color:var(--text);font-family:Nunito,sans-serif;font-size:0.88rem;font-weight:600;outline:none;margin-bottom:4px;resize:none;}
+.edit-confirm-btn{background:var(--accent);color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:0.75rem;font-weight:800;cursor:pointer;}
+.edit-cancel-btn{background:none;border:none;color:var(--muted);font-size:0.75rem;font-weight:800;cursor:pointer;margin-left:5px;}
+.edited-tag{font-size:0.65rem;color:var(--muted);margin-left:5px;font-style:italic;}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginScreen">
+  <div class="login-box">
+    <span class="login-emoji">👋</span>
+    <h2 class="login-title">Hoş Geldin!</h2>
+    <p class="login-subtitle">Sohbete katılmak için bir isim seç.</p>
+    
+    <label class="login-label">Kullanıcı Adı</label>
+    <input type="text" id="nameInput" class="login-input" placeholder="İsim yaz..." maxlength="15">
+    
+    <label class="login-label">Profil Fotoğrafı</label>
+    <div class="pp-upload-area" id="ppUploadArea" onclick="document.getElementById('photoFileInput').click()">
+      <div class="pp-preview-big" id="ppPreviewBig">📷</div>
+      <div class="pp-upload-text">Fotoğraf Yükle</div>
+      <div class="pp-upload-hint">Veya aşağıdan bir emoji seç</div>
+    </div>
+    <input type="file" id="photoFileInput" accept="image/*">
+    
+    <div class="avatar-picker" id="avatarPicker"></div>
+    
+    <label class="login-label">Hakkımda (Bio)</label>
+    <textarea id="bioInput" class="login-input" placeholder="Kendinden bahset..." style="height:60px;resize:none;"></textarea>
+
+    <label class="login-label">Rol Seçimi</label>
+    <div class="role-select">
+      <div class="role-opt selected" data-role="member" onclick="selectRole('member', this)">👤 Üye</div>
+      <div class="role-opt" data-role="owner" onclick="selectRole('owner', this)">👑 Kurucu</div>
+    </div>
+    
+    <div class="owner-code-wrap" id="ownerCodeWrap">
+      <label class="login-label">Kurucu Kodu</label>
+      <input type="password" id="ownerCodeInput" class="login-input" placeholder="Kodu girin...">
+    </div>
+    
+    <button onclick="login()" class="login-btn">Sohbete Başla</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <header>
+    <div style="display:flex;align-items:center;gap:9px">
+      <button id="sidebarToggle" onclick="toggleSidebar()" style="background:none;border:none;color:var(--text);font-size:20px;cursor:pointer;padding:4px;display:none">☰</button>
+      <div class="header-logo"><div class="logo-dot"></div>Chat</div>
+      <span id="activeChanBadge" style="background:var(--card);border:1.5px solid var(--border);border-radius:6px;padding:3px 9px;font-size:0.73rem;color:var(--muted);font-weight:700;font-family:'Space Mono',monospace">#genel</span>
+    </div>
+    <div class="header-right">
+      <button class="bored-btn" onclick="openBored()">🎲 <span>Sıkıldım</span></button>
+      <div class="online-count"><div class="online-dot"></div><span id="onlineCountDisplay">1 çevrimiçi</span></div>
+      <div class="user-chip" onclick="openMyProfile()">
+        <div class="chip-pp" id="headerPP">🧑</div>
+        <span id="headerName" style="font-size:0.79rem;font-weight:700">Sen</span>
+        <span class="role-badge member" id="headerRoleBadge">üye</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+    <div class="sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-label">Kanallar<span class="add-ch-btn" onclick="openAddChannel()">+</span></div>
+        <div id="channelList"></div>
+      </div>
+      <div class="sidebar-divider"></div>
+      <!-- SESLİ ODALAR EKLEMESİ -->
+      <div class="sidebar-section">
+        <div class="sidebar-label">Sesli Odalar</div>
+        <div id="voiceRoomsList">
+          <div class="voice-room-item" onclick="joinVoiceRoom('genel-ses')">
+            <span class="voice-room-icon">🔊</span> Genel Sesli
+          </div>
+          <div class="voice-room-item" onclick="joinVoiceRoom('oyun-odasi')">
+            <span class="voice-room-icon">🎮</span> Oyun Odası
+          </div>
+        </div>
+      </div>
+      <div class="sidebar-divider"></div>
+      <div class="sidebar-section"><div class="sidebar-label">Çevrimiçi</div></div>
+      <div class="members-list" id="membersList"></div>
+    </div>
+
+    <div class="chat-area" style="position:relative">
+      <!-- VİDEO GRID EKLEMESİ -->
+      <div id="videoGrid"></div>
+      
+      <div class="chat-header">
+        <span class="chat-header-hash">#</span>
+        <span class="chat-header-name" id="chatHeaderName">genel</span>
+        <div class="chat-header-right">
+          <span class="chat-header-desc" id="chatHeaderDesc">Genel sohbet kanalı</span>
+          <div class="slowmode-badge" id="slowmodeBadge">🐢 <span id="slowmodeCountdown" class="slowmode-countdown">--</span>s</div><button class="owner-tools-btn hidden" id="ownerToolsBtn" onclick="openOwnerTools()">👑 Araçlar</button>
+        </div>
+      </div>
+      <div class="pinned-bar hidden" id="pinnedBar">
+        <span class="pinned-icon">📌</span>
+        <span class="pinned-text" id="pinnedText">Sabitlenmiş mesaj</span>
+        <span class="pinned-close" onclick="clearPin()">✕</span>
+      </div>
+      <div id="messagesContainer"><div class="day-divider">Bugün</div></div>
+      <div class="typing-bar">
+        <div id="typingIndicator" class="hidden">
+          <div class="typing-dots"><span></span><span></span><span></span></div>
+          <span class="typing-text" id="typingText"></span>
+        </div>
+      </div>
+      
+      <!-- SESLİ KONTROLLER EKLEMESİ -->
+      <div class="voice-controls" id="voiceControls">
+        <button class="v-ctrl-btn" id="muteBtn" onclick="toggleMic()">🎤</button>
+        <button class="v-ctrl-btn" id="cameraBtn" onclick="toggleCam()">📷</button>
+        <button class="v-ctrl-btn leave" onclick="leaveVoiceRoom()">Odadan Ayrıl</button>
+      </div>
+
+      <div class="attach-bar hidden" id="attachBar"><div class="attach-bar-inner" id="attachBarInner"><button class="attach-bar-send" onclick="sendAttachments()">📤 Gönder</button></div></div>
+      <div class="input-area">
+        <div class="input-box">
+          <button class="icon-btn" onclick="toggleEmojiPicker()" title="Emoji">😊</button>
+          <button class="icon-btn" onclick="document.getElementById('fileInput').click()" title="Dosya / Resim ekle">📎</button>
+          <button class="icon-btn" onclick="openPollModal()" title="Anket">📊</button>
+          <input type="file" id="fileInput" accept="*/*" multiple style="display:none"/>
+          <textarea id="msgInput" placeholder="Bir mesaj yaz... (Shift+Enter = satır atla)" rows="1" maxlength="2000"></textarea>
+          <span class="slowmode-inline" id="slowmodeInline">🐢 <span id="slowmodeInlineNum"></span>s</span><button class="send-btn" onclick="sendMessage()">➤</button>
+        </div>
+      </div>
+      <div class="emoji-picker hidden" id="emojiPicker"></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODALS -->
+<div class="modal-overlay hidden" id="addChannelModal">
+  <div class="modal">
+    <h3>➕ Yeni Kanal</h3><p>Yeni bir sohbet alanı oluşturun.</p>
+    <input class="modal-input" id="newChannelName" placeholder="Kanal adı (örn: oyun-odasi)"/>
+    <textarea class="modal-textarea" id="newChannelDesc" placeholder="Kanal açıklaması..."></textarea>
+    <div class="modal-btns">
+      <button class="modal-btn secondary" onclick="closeModal('addChannelModal')">İptal</button>
+      <button class="modal-btn primary" onclick="createChannel()">Oluştur</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="profileModal">
+  <div class="modal" style="max-width:360px">
+    <div class="profile-pp-big" id="profileModalPP">🧑</div>
+    <div class="profile-name" id="profileModalName">Kullanıcı</div>
+    <div style="text-align:center"><div class="profile-title-display" id="profileModalTitle">Üye</div></div>
+    <div class="profile-bio" id="profileModalBio">Bio yükleniyor...</div>
+    <div class="modal-btns" id="profileModalBtns"></div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="editProfileModal">
+  <div class="modal">
+    <h3>✏️ Profili Düzenle</h3><p>Kendini ifade et!</p>
+    <div class="edit-pp-row">
+      <div class="edit-pp-preview" id="editPPPreview">🧑</div>
+      <div class="edit-pp-btn" onclick="document.getElementById('editPhotoInput').click()">Fotoğraf Değiştir</div>
+      <input type="file" id="editPhotoInput" accept="image/*" style="display:none"/>
+    </div>
+    <label class="login-label">Başlık / Ünvan</label>
+    <input class="modal-input" id="editTitleInput" placeholder="örn: Kod Canavarı" oninput="updateTitlePreview()"/>
+    <div class="grad-section">
+      <div class="grad-section-label">Başlık Rengi 1</div>
+      <div class="grad-dots" id="gradColor1Dots"></div>
+    </div>
+    <div class="grad-section">
+      <div class="grad-section-label">Başlık Rengi 2</div>
+      <div class="grad-dots" id="gradColor2Dots"></div>
+    </div>
+    <div class="title-preview-wrap" style="margin-bottom:14px">
+      <div class="grad-section-label" style="text-align:left">Önizleme</div>
+      <div id="titlePreview" style="font-weight:800;font-size:1.1rem">Başlık</div>
+    </div>
+    <label class="login-label">Hakkımda (Bio)</label>
+    <textarea class="modal-textarea" id="editBioInput" placeholder="Kendinden bahset..." style="height:80px"></textarea>
+    <div class="modal-btns">
+      <button class="modal-btn secondary" onclick="closeModal('editProfileModal')">İptal</button>
+      <button class="modal-btn primary" onclick="saveProfile()">Değişiklikleri Kaydet</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="pollModal">
+  <div class="modal">
+    <h3>📊 Yeni Anket</h3><p>İnsanların fikrini al.</p>
+    <input class="modal-input" id="pollQuestion" placeholder="Soru nedir?"/>
+    <div id="pollOptionsList">
+      <input class="modal-input poll-opt-input" placeholder="Seçenek 1"/>
+      <input class="modal-input poll-opt-input" placeholder="Seçenek 2"/>
+    </div>
+    <button class="add-opt-btn" onclick="addPollOption()" style="background:none;border:1.5px dashed var(--border);border-radius:8px;width:100%;padding:8px;color:var(--muted);font-family:Nunito,sans-serif;font-size:0.8rem;font-weight:700;cursor:pointer;margin-bottom:12px;">+ Seçenek Ekle</button>
+    <div class="modal-btns">
+      <button class="modal-btn secondary" onclick="closeModal('pollModal')">İptal</button>
+      <button class="modal-btn primary" onclick="sendPoll()">Gönder</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="ownerToolsModal">
+  <div class="modal">
+    <h3>👑 Kurucu Araçları</h3><p>#<span id="ownerToolsChan"></span> kanalı için</p>
+    <div class="owner-tool-row" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+      <button class="owner-tools-btn" onclick="openAnnounce()" style="padding:12px;height:auto">📢 Duyuru Gönder</button>
+      <button class="owner-tools-btn" id="slowModeBtn" onclick="openSlowModeSettings()" style="padding:12px;height:auto">🐢 Yavaş Mod</button>
+      <button class="owner-tools-btn danger" onclick="clearAllMessages()" style="color:#ef476f;border-color:rgba(239,71,111,0.3);padding:12px;height:auto">🗑️ Tüm Mesajları Sil</button>
+      <button class="owner-tools-btn" onclick="deleteUserMessages()" style="color:#ef476f;border-color:rgba(239,71,111,0.3);padding:12px;height:auto">🧹 Bir Kişinin Mesajlarını Sil</button>
+      <button class="owner-tools-btn danger" onclick="clearAllChannels()" style="color:#ef476f;border-color:rgba(239,71,111,0.3);padding:12px;height:auto">☢️ Tüm Kanalları Temizle</button>
+      <button class="owner-tools-btn" onclick="kickAllBots()" style="color:#ffd700;border-color:rgba(255,215,0,0.3);padding:12px;height:auto">🤖 Botları At</button>
+    </div>
+    <div class="modal-btns"><button class="modal-btn secondary" onclick="closeModal('ownerToolsModal')">Kapat</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="announceModal">
+  <div class="modal">
+    <h3>📢 Duyuru Gönder</h3><p>Herkes görecek özel bir mesaj.</p>
+    <textarea class="modal-textarea" id="announceText" placeholder="Duyurunuzu yazın..." style="height:80px"></textarea>
+    <div class="modal-btns">
+      <button class="modal-btn secondary" onclick="closeModal('announceModal')">İptal</button>
+      <button class="modal-btn primary" onclick="sendAnnounce()">Gönder 📢</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="boredModal">
+  <div class="modal" style="max-width:410px">
+    <h3>🎲 Sıkıldın mı?</h3><p>Bir oyun seç ya da rastgeleye bırak!</p>
+    <style>
+      .bored-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+      .bored-card{background:var(--card);border:2px solid var(--border);border-radius:14px;padding:12px;text-decoration:none;color:inherit;transition:all 0.15s;text-align:center}
+      .bored-card:hover{border-color:var(--accent);transform:translateY(-3px)}
+      .bored-card-icon{font-size:24px;margin-bottom:4px}
+      .bored-card-title{font-weight:800;font-size:0.85rem}
+      .bored-card-desc{font-size:0.68rem;color:var(--muted);font-weight:700}
+      .bored-random-btn{width:100%;padding:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border:none;border-radius:10px;font-family:Nunito,sans-serif;font-weight:800;cursor:pointer;margin-bottom:8px}
+    </style>
+    <div class="bored-grid">
+      <a class="bored-card" href="https://www.geoguessr.com" target="_blank"><div class="bored-card-icon">🌍</div><div class="bored-card-title">GeoGuessr</div><div class="bored-card-desc">Neredesin bil!</div></a>
+      <a class="bored-card" href="https://neal.fun/infinite-craft/" target="_blank"><div class="bored-card-icon">⚗️</div><div class="bored-card-title">Infinite Craft</div><div class="bored-card-desc">Elementleri birleştir</div></a>
+      <a class="bored-card" href="https://skribbl.io" target="_blank"><div class="bored-card-icon">🎨</div><div class="bored-card-title">Skribbl.io</div><div class="bored-card-desc">Çiz ve tahmin et</div></a>
+      <a class="bored-card" href="https://garticphone.com" target="_blank"><div class="bored-card-icon">📞</div><div class="bored-card-title">Gartic Phone</div><div class="bored-card-desc">Telefon kulağı</div></a>
+    </div>
+    <button class="bored-random-btn" onclick="randomFun()">🎲 Rastgele Aç!</button>
+    <button class="modal-btn secondary" style="width:100%;margin-top:8px" onclick="closeModal('boredModal')">Kapat</button>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, push, onValue, set, remove, onDisconnect, get, query, limitToLast, orderByKey } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCpnXOFauAqnuHrUlNg5WCmNi9FRQ1cgVY",
+  authDomain: "my-chat-bdc87.firebaseapp.com",
+  databaseURL: "https://my-chat-bdc87-default-rtdb.firebaseio.com",
+  projectId: "my-chat-bdc87",
+  storageBucket: "my-chat-bdc87.firebasestorage.app",
+  messagingSenderId: "614734033121",
+  appId: "1:614734033121:web:44b93bb896418f6cbb87a0"
+};
+const OWNER_HASH = "8030dd20b0b72a1292efba460af0374d7ee13ccee9713a72b67161ade538e441";
+async function hashStr(s){
+  const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s));
+  return [...new Uint8Array(buf)].map(x=>x.toString(16).padStart(2,'0')).join('');
+}
+async function checkOwnerCode(input){
+  return (await hashStr(input))===OWNER_HASH;
+}
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+const EMOJIS = ['🧑','👩','👦','👧','🧒','👱','🧔','👨‍🎓','👩‍🎓','🦸','🦊','🐼','🐯','🐸','🦄','🐧','🦋','🌟'];
+const REACTION_EMOJIS = ['😂','😍','🔥','👍','❤️','😮','😢','🥳','💯','🤔','😎','👋','🎉','💪','✨','🤗','😴','🙈'];
+const GRAD_COLORS = ['#ff6b35','#ffd700','#3ecfcf','#7b5ea7','#ef476f','#84dcc6','#a0c4ff','#06d6a0','#ff99c8','#ffffff','#ff4d4d','#00cfff'];
+const FUN_LINKS = ['https://www.geoguessr.com','https://neal.fun/infinite-craft/','https://skribbl.io','https://garticphone.com','https://www.sporcle.com','https://typeracer.com','https://lichess.org','https://2048.la','https://www.coolmathgames.com','https://poki.com','https://wordletr.net','https://www.chess.com/play/computer'];
+
+let currentUser = null, currentChannel = 'genel', typingTimer = null;
+const MSG_TIMESTAMPS = []; 
+const RATE_LIMIT_COUNT = 4;  
+const RATE_LIMIT_WINDOW = 5000; 
+const RATE_LIMIT_COOLDOWN = 8000; 
+let rateLimitedUntil = 0;
+
+// --- WEBRTC DEĞİŞKENLERİ ---
+let socket, localStream, peers = {}, isMicOpen = true, isCamOpen = false;
+
+// --- MOBİL SIDEBAR ---
+window.toggleSidebar = () => {
+  const sidebar = document.querySelector('.sidebar');
+  const overlay = document.getElementById('sidebarOverlay');
+  sidebar.classList.toggle('open');
+  overlay.classList.toggle('show');
+};
+
+// --- SOCKET.IO & WEBRTC MANTIĞI ---
+function initSocket() {
+  socket = io();
+  socket.on('all-users-in-room', users => {
+    users.forEach(userID => {
+      const peer = createPeer(userID, socket.id, localStream);
+      peers[userID] = peer;
+    });
+  });
+  socket.on('user-joined', payload => {
+    const peer = addPeer(payload.signal, payload.callerID, localStream);
+    peers[payload.callerID] = peer;
+  });
+  socket.on('receiving-returned-signal', payload => {
+    const item = peers[payload.id];
+    if(item) item.signal(payload.signal);
+  });
+  socket.on('user-left-room', userID => {
+    if(peers[userID]) {
+      peers[userID].destroy();
+      delete peers[userID];
+    }
+    const video = document.getElementById(userID);
+    if(video) video.parentElement.remove();
+  });
+}
+
+window.joinVoiceRoom = async (roomId) => {
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    localStream.getVideoTracks()[0].enabled = false;
+    const vg = document.getElementById('videoGrid');
+    vg.classList.add('active');
+    document.getElementById('voiceControls').classList.add('active');
+    
+    // Mobilde videoGrid açıldığında mesajların üstten kayması için
+    if(window.innerWidth <= 768) {
+      document.getElementById('messagesContainer').style.paddingTop = (vg.offsetHeight || 180) + 'px';
+    }
+
+    addVideoElement('me', localStream, 'Sen');
+    if(!socket) initSocket();
+    socket.emit('join-voice-room', roomId);
+  } catch (err) {
+    alert("Mikrofon/Kamera izni gerekli!");
+    console.error(err);
+  }
+};
+
+function createPeer(userToSignal, callerID, stream) {
+  const peer = new SimplePeer({ initiator: true, trickle: false, stream });
+  peer.on('signal', signal => {
+    socket.emit('sending-signal', { userToSignal, callerID, signal });
+  });
+  peer.on('stream', stream => addVideoElement(userToSignal, stream, 'Kullanıcı'));
+  return peer;
+}
+
+function addPeer(incomingSignal, callerID, stream) {
+  const peer = new SimplePeer({ initiator: false, trickle: false, stream });
+  peer.on('signal', signal => {
+    socket.emit('returning-signal', { signal, callerID });
+  });
+  peer.on('stream', stream => addVideoElement(callerID, stream, 'Kullanıcı'));
+  peer.signal(incomingSignal);
+  return peer;
+}
+
+function addVideoElement(id, stream, labelText) {
+  if(document.getElementById(id)) return;
+  const container = document.createElement('div');
+  container.className = 'video-container';
+  const video = document.createElement('video');
+  video.id = id;
+  video.srcObject = stream;
+  video.autoplay = true;
+  video.playsInline = true;
+  if(id === 'me') video.muted = true;
+  const label = document.createElement('div');
+  label.className = 'video-label';
+  label.textContent = labelText;
+  container.appendChild(video);
+  container.appendChild(label);
+  document.getElementById('videoGrid').appendChild(container);
+}
+
+window.toggleMic = () => {
+  isMicOpen = !isMicOpen;
+  localStream.getAudioTracks()[0].enabled = isMicOpen;
+  document.getElementById('muteBtn').classList.toggle('off', !isMicOpen);
+  document.getElementById('muteBtn').textContent = isMicOpen ? '🎤' : '🔇';
+};
+
+window.toggleCam = () => {
+  isCamOpen = !isCamOpen;
+  localStream.getVideoTracks()[0].enabled = isCamOpen;
+  document.getElementById('cameraBtn').classList.toggle('off', !isCamOpen);
+  document.getElementById('cameraBtn').textContent = isCamOpen ? '📷' : '🚫';
+};
+
+window.leaveVoiceRoom = () => {
+  if(socket) socket.emit('leave-voice-room');
+  if(localStream) {
+    localStream.getTracks().forEach(track => track.stop());
+  }
+  const vg = document.getElementById('videoGrid');
+  vg.innerHTML = '';
+  vg.classList.remove('active');
+  document.getElementById('voiceControls').classList.remove('active');
+  
+  // Mobilde videoGrid kapandığında padding'i sıfırla
+  if(window.innerWidth <= 768) {
+    document.getElementById('messagesContainer').style.paddingTop = '10px';
+  }
+
+  Object.values(peers).forEach(peer => peer.destroy());
+  peers = {};
+};
+
+// --- ORİJİNAL KODUN DEVAMI ---
+let myOnlineRef = null, myTypingRef = null;
+let loginPhotoData = null, editPhotoData = null;
+let gradC1 = GRAD_COLORS[0], gradC2 = GRAD_COLORS[2];
+let slowMode = false;
+let unsubMessages=null,unsubPinned=null,unsubSlowMode=null,unsubAnnounce=null,unsubTyping=null;
+let presenceInterval=null;
+let localDeleted = new Set(JSON.parse(localStorage.getItem('localDeleted')||'[]'));
+
+// PP UPLOAD (login)
+document.getElementById('photoFileInput').onchange = e => {
+  const file = e.target.files[0]; if (!file) return;
+  const r = new FileReader();
+  r.onload = ev => {
+    loginPhotoData = ev.target.result;
+    const prev = document.getElementById('ppPreviewBig');
+    prev.innerHTML = `<img src="${loginPhotoData}" alt="pp"/>`;
+    document.getElementById('ppUploadArea').classList.add('has-photo');
+    document.querySelectorAll('.avatar-btn').forEach(b => b.classList.remove('selected'));
+  };
+  r.readAsDataURL(file);
+};
+
+// AVATAR PICKER
+const avatarPicker = document.getElementById('avatarPicker');
+EMOJIS.forEach((e, i) => {
+  const btn = document.createElement('button');
+  btn.className = 'avatar-btn' + (i===0?' selected':'');
+  btn.textContent = e; btn.type = 'button';
+  btn.onclick = () => {
+    avatarPicker.querySelectorAll('.avatar-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    loginPhotoData = null;
+    document.getElementById('ppPreviewBig').innerHTML = '📷';
+    document.getElementById('ppUploadArea').classList.remove('has-photo');
+  };
+  avatarPicker.appendChild(btn);
+});
+
+// EMOJI PICKER
+const emojiPicker = document.getElementById('emojiPicker');
+REACTION_EMOJIS.forEach(e => {
+  const s = document.createElement('span'); s.className='emoji-option'; s.textContent=e;
+  s.onclick=()=>{ const i=document.getElementById('msgInput'); i.value+=e; i.focus(); emojiPicker.classList.add('hidden'); };
+  emojiPicker.appendChild(s);
+});
+window.toggleEmojiPicker=()=>emojiPicker.classList.toggle('hidden');
+document.addEventListener('click',e=>{ if(!emojiPicker.contains(e.target)&&!e.target.classList.contains('icon-btn')) emojiPicker.classList.add('hidden'); });
+
+// FILE / IMAGE ATTACH
+let pendingFiles = []; 
+function getFileIcon(type){
+  if(type.startsWith('image/')) return '🖼️';
+  if(type==='application/pdf') return '📄';
+  if(type.includes('word')||type.includes('document')) return '📝';
+  if(type.includes('zip')||type.includes('rar')||type.includes('7z')) return '🗜️';
+  if(type.includes('audio')) return '🎵';
+  if(type.includes('video')) return '🎬';
+  if(type.includes('spreadsheet')||type.includes('excel')) return '📊';
+  return '📁';
+}
+function formatBytes(b){if(b<1024)return b+'B';if(b<1048576)return (b/1024).toFixed(1)+'KB';return (b/1048576).toFixed(1)+'MB';}
+
+function refreshAttachBar(){
+  const bar=document.getElementById('attachBar');
+  const inner=document.getElementById('attachBarInner');
+  const inputBox=document.querySelector('.input-box');
+  if(pendingFiles.length===0){bar.classList.add('hidden');inputBox.classList.remove('has-attach');inner.innerHTML='<button class="attach-bar-send" onclick="sendAttachments()">📤 Gönder</button>';return;}
+  bar.classList.remove('hidden');
+  inputBox.classList.add('has-attach');
+  inner.innerHTML='';
+  pendingFiles.forEach((f,i)=>{
+    const item=document.createElement('div');item.className='attach-item';
+    if(f.isImage){
+      const img=document.createElement('img');img.src=f.data;
+      item.appendChild(img);
+    } else {
+      const icon=document.createElement('span');icon.textContent=getFileIcon(f.type);
+      item.appendChild(icon);
+    }
+    const rm=document.createElement('div');rm.className='attach-del';rm.textContent='✕';
+    rm.onclick=()=>{pendingFiles.splice(i,1);refreshAttachBar();};
+    item.appendChild(rm);
+    inner.appendChild(item);
+  });
+  const sendBtn=document.createElement('button');sendBtn.className='attach-bar-send';sendBtn.textContent='📤 Gönder';
+  sendBtn.onclick=sendAttachments;
+  inner.appendChild(sendBtn);
+}
+
+document.getElementById('fileInput').onchange = e => {
+  const files = Array.from(e.target.files);
+  files.forEach(f => {
+    const r = new FileReader();
+    r.onload = ev => {
+      pendingFiles.push({name:f.name, size:f.size, type:f.type, data:ev.target.result, isImage:f.type.startsWith('image/')});
+      refreshAttachBar();
+    };
+    r.readAsDataURL(f);
+  });
+  e.target.value='';
+};
+
+window.sendAttachments=async()=>{
+  if(!currentUser||pendingFiles.length===0) return;
+  for(const f of pendingFiles){
+    const msg = {
+      author:currentUser.name, avatar:currentUser.avatar, role:currentUser.role,
+      title:currentUser.title||'', gradC1:currentUser.gradC1||'', gradC2:currentUser.gradC2||'',
+      photoData:currentUser.photoData||null, ts:Date.now()
+    };
+    if(f.isImage){ msg.type='image'; msg.imgData=f.data; }
+    else { msg.type='file'; msg.fileData=f.data; msg.fileName=f.name; msg.fileSize=f.size; msg.fileType=f.type; }
+    push(ref(db,`messages/${currentChannel}`),msg);
+  }
+  pendingFiles=[]; refreshAttachBar();
+};
+
+// LOGIN
+let selectedRole = 'member';
+window.selectRole = (role, el) => {
+  selectedRole = role;
+  document.querySelectorAll('.role-opt').forEach(opt => opt.classList.remove('selected'));
+  el.classList.add('selected');
+  document.getElementById('ownerCodeWrap').style.display = role === 'owner' ? 'block' : 'none';
+};
+
+window.login = async () => {
+  const name = document.getElementById('nameInput').value.trim();
+  const bio = document.getElementById('bioInput').value.trim();
+  if(!name){ alert('Lütfen bir isim girin!'); return; }
+  if(selectedRole === 'owner'){
+    const code = document.getElementById('ownerCodeInput').value;
+    const ok = await checkOwnerCode(code);
+    if(!ok){ alert('Hatalı kurucu kodu!'); return; }
+  }
+  const avatar = loginPhotoData ? null : document.querySelector('.avatar-btn.selected').textContent;
+  currentUser = { name, bio, avatar, role: selectedRole, photoData: loginPhotoData, ts: Date.now() };
+  localStorage.setItem('chatLogin', JSON.stringify({name, bio, role: selectedRole, avatarIdx: EMOJIS.indexOf(avatar)}));
+  
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  
+  renderPP(document.getElementById('headerPP'), currentUser);
+  document.getElementById('headerName').textContent = name;
+  const rb = document.getElementById('headerRoleBadge');
+  rb.className = `role-badge ${selectedRole}`;
+  rb.textContent = selectedRole === 'owner' ? 'kurucu' : 'üye';
+  if(selectedRole === 'owner') document.getElementById('ownerToolsBtn').classList.remove('hidden');
+  
+  myOnlineRef = ref(db, `online/${name}`);
+  set(myOnlineRef, currentUser);
+  onDisconnect(myOnlineRef).remove();
+  
+  setupInput();
+  listenOnline();
+  listenChannels();
+  listenTyping();
+  listenPinned();
+  listenSlowMode();
+  listenAnnounce();
+  switchChannel('genel', 'genel', 'Genel sohbet kanalı');
+};
+
+// MESSAGES
+function listenMessages(){
+  if(unsubMessages) unsubMessages();
+  const msgRef = query(ref(db, `messages/${currentChannel}`), limitToLast(100));
+  unsubMessages = onValue(msgRef, snapshot => {
+    const data = snapshot.val();
+    if(!data){ document.getElementById('messagesContainer').innerHTML = '<div class="day-divider">Henüz mesaj yok</div>'; return; }
+    const entries = Object.entries(data).sort((a,b) => a[1].ts - b[1].ts);
+    renderMessages(entries);
+  });
+}
+
+function renderMessages(entries){
+  const container = document.getElementById('messagesContainer');
+  container.innerHTML = '<div class="day-divider">Bugün</div>';
+  let prevAuthor = null, currentGroup = null;
+  entries.forEach(([key, msg]) => {
+    if(localDeleted.has(key)) return;
+    if(msg.type === 'system'){
+      const div = document.createElement('div'); div.className = 'sys-msg'; div.textContent = msg.text; container.appendChild(div); prevAuthor = null; currentGroup = null;
+    } else if(msg.type === 'announce'){
+      const div = document.createElement('div'); div.className = 'announce-msg'; div.textContent = '📢 ' + msg.text; container.appendChild(div); prevAuthor = null; currentGroup = null;
+    } else if(msg.type === 'poll'){
+      renderPollMsg(container, key, msg); prevAuthor = null; currentGroup = null;
+    } else {
+      const isOwn = msg.author === currentUser?.name;
+      if(msg.author !== prevAuthor){ currentGroup = buildMsgGroup(isOwn, msg, container); prevAuthor = msg.author; }
+      const wrap = document.createElement('div'); wrap.className = 'msg-bw';
+      if(msg.type === 'image'){
+        const img = document.createElement('img'); img.className = 'msg-img' + (isOwn ? ' own' : ''); img.src = msg.imgData; img.onclick = () => openImgViewer(msg.imgData); wrap.appendChild(img);
+      } else if(msg.type === 'file'){
+        const a = document.createElement('a'); a.className = 'file-bubble' + (isOwn ? ' own' : ''); a.href = msg.fileData; a.download = msg.fileName;
+        a.innerHTML = `<span class="file-icon">${getFileIcon(msg.fileType)}</span><div class="file-info"><div class="file-name">${msg.fileName}</div><div class="file-size">${formatBytes(msg.fileSize)}</div><div class="file-dl">⬇️ İndir</div></div>`;
+        wrap.appendChild(a);
+      } else {
+        const bubble = document.createElement('div'); bubble.className = 'msg-bubble' + (isOwn ? ' own' : ''); bubble.textContent = msg.text;
+        if(msg.edited){ const et = document.createElement('span'); et.className = 'edited-tag'; et.textContent = ' (düzenlendi)'; bubble.appendChild(et); }
+        wrap.appendChild(bubble);
+      }
+      appendMsgActions(wrap, key, msg, isOwn);
+      currentGroup.appendChild(wrap);
+    }
+  });
+  container.scrollTop = container.scrollHeight;
+}
+
+function buildMsgGroup(isOwn, msg, container){
+  const time = new Date(msg.ts).toLocaleTimeString('tr-TR', {hour:'2-digit', minute:'2-digit'});
+  const g = document.createElement('div'); g.className = 'msg-group' + (isOwn ? ' own' : '');
+  const h = document.createElement('div'); h.className = 'msg-group-header';
+  const av = document.createElement('div'); av.className = 'msg-avatar';
+  if(msg.photoData){ av.innerHTML = `<img src="${msg.photoData}" alt="pp"/>`; } else { av.textContent = msg.avatar || '🧑'; }
+  av.onclick = () => showProfile(msg.author);
+  const au = document.createElement('span'); au.className = 'msg-author'; au.style.color = isOwn ? 'var(--accent)' : getColor(msg.author);
+  au.textContent = msg.author + (msg.role === 'owner' ? ' 👑' : '');
+  au.onclick = () => showProfile(msg.author);
+  if(msg.title) au.appendChild(gradTitle(msg.title, msg.gradC1, msg.gradC2));
+  const ts = document.createElement('span'); ts.className = 'msg-time'; ts.textContent = time;
+  h.appendChild(av); h.appendChild(au); h.appendChild(ts); g.appendChild(h);
+  container.appendChild(g);
+  return g;
+}
+
+function appendMsgActions(wrap, key, msg, isOwn){
+  const isOwner = currentUser?.role === 'owner';
+  if(!isOwn && !isOwner) return;
+  const actions = document.createElement('div'); actions.className = 'msg-actions';
+  if(isOwner){
+    const pinBtn = document.createElement('span'); pinBtn.className = 'msg-action-btn pin-btn'; pinBtn.textContent = '📌'; pinBtn.onclick = () => pinMessage(key, msg.text || '[Resim]'); actions.appendChild(pinBtn);
+  }
+  if(isOwn || isOwner){
+    const delAll = document.createElement('span'); delAll.className = 'msg-action-btn danger'; delAll.textContent = '🗑️ Herkesten sil';
+    delAll.onclick = () => { remove(ref(db, `messages/${currentChannel}/${key}`)); push(ref(db, `messages/${currentChannel}`), {type:'system', text:`🗑️ ${currentUser.name} bir mesajı sildi.`, ts:Date.now()}); };
+    actions.appendChild(delAll);
+  }
+  if(isOwn){
+    const delMe = document.createElement('span'); delMe.className = 'msg-action-btn'; delMe.textContent = '🙈 Benden sil';
+    delMe.onclick = () => { localDeleted.add(key); localStorage.setItem('localDeleted', JSON.stringify([...localDeleted])); wrap.closest('.msg-group')?.remove() || wrap.remove(); };
+    actions.appendChild(delMe);
+    if(msg.type === 'user'){
+      const editBtn = document.createElement('span'); editBtn.className = 'msg-action-btn'; editBtn.textContent = '✏️ Düzenle'; editBtn.onclick = () => startEditMsg(wrap, key, msg); actions.insertBefore(editBtn, actions.firstChild);
+    }
+  }
+  wrap.appendChild(actions);
+}
+
+function startEditMsg(wrap, key, msg){
+  const bubble = wrap.querySelector('.msg-bubble'); if(!bubble) return;
+  const textarea = document.createElement('textarea'); textarea.className = 'editing-input'; textarea.value = msg.text; textarea.style.marginLeft = '39px';
+  const actions = wrap.querySelector('.msg-actions'); wrap.replaceChild(textarea, bubble); actions.style.display = 'none'; textarea.focus();
+  const btnRow = document.createElement('div'); btnRow.style.cssText = 'margin-left:39px;display:flex;gap:4px;margin-top:3px;';
+  const ok = document.createElement('button'); ok.className = 'edit-confirm-btn'; ok.textContent = '✅ Kaydet';
+  const cancel = document.createElement('button'); cancel.className = 'edit-cancel-btn'; cancel.textContent = 'İptal';
+  ok.onclick = () => {
+    const newText = textarea.value.trim(); if(!newText) return;
+    set(ref(db, `messages/${currentChannel}/${key}`), {...msg, text: newText, edited: true}); btnRow.remove(); actions.style.display = '';
+  };
+  cancel.onclick = () => { btnRow.remove(); wrap.replaceChild(bubble, textarea); actions.style.display = ''; };
+  btnRow.appendChild(ok); btnRow.appendChild(cancel); wrap.appendChild(btnRow);
+}
+
+// FIREBASE UTILS
+function listenOnline(){ onValue(ref(db, 'online'), snapshot => { const data = snapshot.val() || {}; document.getElementById('onlineCountDisplay').textContent = `${Object.keys(data).length} çevrimiçi`; const list = document.getElementById('membersList'); list.innerHTML = ''; Object.values(data).forEach(u => { const item = document.createElement('div'); item.className = 'member-item'; item.innerHTML = `<div class="member-av-wrap"><div class="member-av">${u.photoData ? `<img src="${u.photoData}"/>` : u.avatar}</div><div class="m-online-dot"></div></div><div class="member-info"><div class="member-name">${u.name}</div><div class="member-title-text">${u.role==='owner'?'👑 Kurucu':'👤 Üye'}</div></div>`; item.onclick = () => showProfile(u.name); list.appendChild(item); }); }); }
+function listenChannels(){ onValue(ref(db, 'channels'), snapshot => { const data = snapshot.val() || {}; const list = document.getElementById('channelList'); list.innerHTML = ''; Object.values(data).sort((a,b)=>a.order-b.order).forEach(ch => { const item = document.createElement('div'); item.className = 'channel-item' + (currentChannel===ch.id?' active':''); item.innerHTML = `<span class="ch-hash">#</span>${ch.name}`; item.onclick = () => switchChannel(ch.id, ch.name, ch.desc); list.appendChild(item); }); }); }
+function switchChannel(id, name, desc){ currentChannel = id; document.getElementById('chatHeaderName').textContent = name; document.getElementById('chatHeaderDesc').textContent = desc || ''; document.getElementById('activeChanBadge').textContent = `#${name}`; listenMessages(); listenTyping(); listenPinned(); }
+function sendMessage(){ const input = document.getElementById('msgInput'); const text = input.value.trim(); if(!text) return; push(ref(db, `messages/${currentChannel}`), {author: currentUser.name, avatar: currentUser.avatar, role: currentUser.role, photoData: currentUser.photoData, text, ts: Date.now(), type: 'user'}); input.value = ''; input.style.height = 'auto'; }
+function renderPP(el, u){ if(u.photoData){ el.innerHTML = `<img src="${u.photoData}"/>`; } else { el.textContent = u.avatar || '🧑'; } }
+function getColor(n){ const c=['#7b5ea7','#3ecfcf','#f7c59f','#e8a0bf','#84dcc6','#a0c4ff','#ffd166','#ef476f']; let h=0; for(let x of n)h=(h*31+x.charCodeAt(0))%c.length; return c[h]; }
+function gradTitle(t, c1, c2){ const s = document.createElement('span'); s.className = 'msg-title-tag'; s.textContent = t; s.style.background = `linear-gradient(90deg, ${c1||'#ff6b35'}, ${c2||'#3ecfcf'})`; s.style.color = '#fff'; return s; }
+window.closeModal = id => document.getElementById(id).classList.add('hidden');
+window.openBored = () => document.getElementById('boredModal').classList.remove('hidden');
+window.randomFun = () => window.open(FUN_LINKS[Math.floor(Math.random()*FUN_LINKS.length)], '_blank');
+
+// BOOTSTRAP
+function setupInput(){
+  const input = document.getElementById('msgInput');
+  input.addEventListener('keydown', e => { if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendMessage(); } });
+  input.addEventListener('input', () => {
+    input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 150) + 'px';
+    if(currentUser){ myTypingRef = ref(db, `typing/${currentChannel}/${currentUser.name}`); set(myTypingRef, Date.now()); clearTimeout(typingTimer); typingTimer = setTimeout(() => { if(myTypingRef) remove(myTypingRef); }, 3000); }
+  });
+}
+
+function listenTyping(){ if(unsubTyping) unsubTyping(); unsubTyping=onValue(ref(db,`typing/${currentChannel}`),snapshot=>{ if(!currentUser)return; const data=snapshot.val()||{}; const now=Date.now(); const others=Object.entries(data).filter(([n,ts])=>n!==currentUser.name&&now-ts<4000).map(([n])=>n); const ind=document.getElementById('typingIndicator'); const txt=document.getElementById('typingText'); if(others.length>0){ind.classList.remove('hidden');txt.textContent=others.length===1?`${others[0]} yazıyor...`:`${others.join(', ')} yazıyor...`;} else ind.classList.add('hidden'); }); }
+function listenPinned(){ if(unsubPinned) unsubPinned(); unsubPinned=onValue(ref(db,`pinned/${currentChannel}`),snapshot=>{ const data=snapshot.val(); const bar=document.getElementById('pinnedBar'); if(data&&data.text){ bar.classList.remove('hidden'); document.getElementById('pinnedText').textContent=data.text; } else { bar.classList.add('hidden'); } }); }
+function pinMessage(key,text){ set(ref(db,`pinned/${currentChannel}`),{key,text,by:currentUser.name}); }
+window.clearPin=()=>{ if(currentUser?.role==='owner') remove(ref(db,`pinned/${currentChannel}`)); };
+function openImgViewer(src){ const ov=document.createElement('div');ov.className='img-viewer-overlay';ov.innerHTML=`<img src="${src}"/>`;ov.onclick=()=>ov.remove();document.body.appendChild(ov); }
+window.showProfile=async name=>{ const snap=await get(ref(db,`online/${name}`)); const u=snap.val(); if(!u)return; const ppEl=document.getElementById('profileModalPP'); if(u.photoData){ppEl.innerHTML=`<img src="${u.photoData}"/>`;}else{ppEl.textContent=u.avatar||'🧑';} document.getElementById('profileModalName').textContent=u.name; const td=document.getElementById('profileModalTitle'); if(u.title){td.textContent=u.title;td.style.background=`linear-gradient(90deg,${u.gradC1||'#ff6b35'},${u.gradC2||'#3ecfcf'})`;td.style.webkitBackgroundClip='text';td.style.webkitTextFillColor='transparent';} else{td.textContent=u.role==='owner'?'👑 Kurucu':'👤 Üye';td.style.color='var(--muted)';} document.getElementById('profileModalBio').textContent=u.bio||'Bio yok.'; document.getElementById('profileModalBtns').innerHTML='<button class="modal-btn secondary" onclick="closeModal(\'profileModal\')">Kapat</button>'; if(name===currentUser?.name){ const eb=document.createElement('button');eb.className='modal-btn primary';eb.textContent='✏️ Düzenle';eb.onclick=()=>{closeModal('profileModal');openEditProfile();}; document.getElementById('profileModalBtns').appendChild(eb); } document.getElementById('profileModal').classList.remove('hidden'); };
+window.openMyProfile=()=>{if(currentUser)showProfile(currentUser.name);};
+function openEditProfile(){ document.getElementById('editTitleInput').value=currentUser.title||''; document.getElementById('editBioInput').value=currentUser.bio||''; document.getElementById('editProfileModal').classList.remove('hidden'); }
+window.saveProfile=()=>{ currentUser.title=document.getElementById('editTitleInput').value.trim(); currentUser.bio=document.getElementById('editBioInput').value.trim(); if(myOnlineRef) set(myOnlineRef,{...currentUser,ts:Date.now()}); renderPP(document.getElementById('headerPP'),currentUser); closeModal('editProfileModal'); };
+window.createChannel=()=>{ const name=document.getElementById('newChannelName').value.trim().toLowerCase().replace(/\s+/g,'-'); if(!name)return; set(ref(db,`channels/${name}`),{id:name,name,order:Date.now()}); closeModal('addChannelModal'); switchChannel(name,name,''); };
+function listenSlowMode(){} function listenAnnounce(){}
+
+listenChannels();
+switchChannel('genel','genel','Genel sohbet kanalı');
+window.addEventListener('beforeunload',()=>{if(myOnlineRef)remove(myOnlineRef);if(myTypingRef)remove(myTypingRef);});
+</script>
+
+<div class="modal-overlay hidden" id="confirmModal">
+  <div class="modal" style="max-width:340px;text-align:center">
+    <div style="font-size:2.5rem;margin-bottom:10px">⚠️</div>
+    <h3 id="confirmTitle">Emin misin?</h3>
+    <p id="confirmDesc" style="margin:10px 0 20px">Bu işlem geri alınamaz.</p>
+    <div class="modal-btns">
+      <button class="modal-btn secondary" onclick="closeModal('confirmModal')">İptal</button>
+      <button class="modal-btn danger" id="confirmOkBtn">Evet, sil</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="slowModeModal">
+  <div class="modal" style="max-width:340px">
+    <h3>🐢 Yavaş Mod</h3>
+    <p>Mesajlar arasında kaç saniye beklensin?</p>
+    <input class="modal-input" id="slowModeSeconds" type="number" min="1" max="300" placeholder="örn: 10"/>
+    <div class="modal-btns">
+      <button class="modal-btn secondary" onclick="closeModal('slowModeModal')">Kapat</button>
+      <button class="modal-btn primary" onclick="enableSlowMode()">Aç</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="roleModal">
+  <div class="modal" style="max-width:340px">
+    <h3>🎭 Rol Değiştir</h3>
+    <div class="modal-btns">
+      <button class="modal-btn secondary" onclick="closeModal('roleModal')">İptal</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
