@@ -148,6 +148,11 @@ header{background:var(--surface);border-bottom:2px solid var(--border);padding:0
 .msg-group.own .msg-bubble{margin-left:0;}
 .msg-group.own .msg-bw{flex-direction:row-reverse;}
 .sys-msg{text-align:center;color:var(--muted);font-size:0.72rem;font-weight:700;padding:2px 0;}
+.sys-msg.transient{animation:sysMsgLife var(--ttl,5s) linear forwards;}
+@keyframes sysMsgLife{
+  0%,72%{opacity:1;transform:translateY(0);}
+  100%{opacity:0;transform:translateY(-8px);max-height:0;margin:0;padding:0;}
+}
 .announce-msg{text-align:center;background:rgba(255,215,0,0.08);border:1px solid rgba(255,215,0,0.2);border-radius:8px;padding:8px 14px;margin:6px 0;font-size:0.84rem;font-weight:700;color:var(--owner);}
 
 /* POLL */
@@ -576,6 +581,8 @@ const EMOJIS = ['🧑','👩','👦','👧','🧒','👱','🧔','👨‍🎓','
 const REACTION_EMOJIS = ['😂','😍','🔥','👍','❤️','😮','😢','🥳','💯','🤔','😎','👋','🎉','💪','✨','🤗','😴','🙈'];
 const GRAD_COLORS = ['#ff6b35','#ffd700','#3ecfcf','#7b5ea7','#ef476f','#84dcc6','#a0c4ff','#06d6a0','#ff99c8','#ffffff','#ff4d4d','#00cfff'];
 const FUN_LINKS = ['https://www.geoguessr.com','https://neal.fun/infinite-craft/','https://skribbl.io','https://garticphone.com','https://www.sporcle.com','https://typeracer.com','https://lichess.org','https://2048.la','https://www.coolmathgames.com','https://poki.com','https://wordletr.net','https://www.chess.com/play/computer'];
+const TRANSIENT_SYSTEM_MS = 5000;
+const SYSTEM_CLEANUP_INTERVAL_MS = 4000;
 
 let currentUser = null, currentChannel = 'genel', typingTimer = null;
 // ── RATE LIMIT ──
@@ -606,6 +613,7 @@ let gradC1 = GRAD_COLORS[0], gradC2 = GRAD_COLORS[2];
 let slowMode = false;
 let unsubMessages=null,unsubPinned=null,unsubSlowMode=null,unsubAnnounce=null,unsubTyping=null;
 let presenceInterval=null;
+let lastSystemCleanupAt=0;
 // Track which messages user has locally deleted (hidden only for them)
 let localDeleted = new Set(JSON.parse(localStorage.getItem('localDeleted')||'[]'));
 
@@ -876,7 +884,18 @@ window.sendMessage=async()=>{
   MSG_TIMESTAMPS.push(now2);
   if(slowMode&&slowModeSecs>0&&currentUser.role!=='owner'){
     const now=Date.now();
-    if(now-lastSentTime<slowModeSecs*1000){ return; }
+    const remainingMs=(slowModeSecs*1000)-(now-lastSentTime);
+    if(remainingMs>0){
+      const waitSecs=Math.ceil(remainingMs/1000);
+      input.placeholder=`🐢 Yavaş mod açık. ${waitSecs}s bekle.`;
+      input.style.borderColor='#ef476f';
+      setTimeout(()=>{
+        input.placeholder='Bir mesaj yaz... (Shift+Enter = satır atla)';
+        input.style.borderColor='';
+      },1200);
+      showSlowmodeIdle();
+      return;
+    }
     lastSentTime=now;
     startSlowCountdown();
   }
@@ -979,6 +998,18 @@ async function botKufurKontrol(key, msg) {
 const MSG_LIMIT = 80;
 let lastSeenMsgKey = null;
 let isFirstLoad = true;
+function cleanupExpiredSystemMessages(entries){
+  if(currentUser?.role!=='owner') return;
+  const now=Date.now();
+  if(now-lastSystemCleanupAt<SYSTEM_CLEANUP_INTERVAL_MS) return;
+  lastSystemCleanupAt=now;
+  const expiredKeys=entries
+    .filter(([_,msg])=>msg?.type==='system' && now-(msg.ts||0)>=TRANSIENT_SYSTEM_MS)
+    .map(([key])=>key);
+  if(expiredKeys.length===0) return;
+  Promise.allSettled(expiredKeys.map(key=>remove(ref(db,`messages/${currentChannel}/${key}`))))
+    .catch(err=>console.error('System message cleanup error:',err));
+}
 function listenMessages(){
   if(unsubMessages) unsubMessages();
   lastSeenMsgKey = null;
@@ -986,7 +1017,12 @@ function listenMessages(){
   const msgsQuery = query(ref(db,`messages/${currentChannel}`), orderByKey(), limitToLast(MSG_LIMIT));
   unsubMessages=onValue(msgsQuery, snapshot=>{
     const data=snapshot.val()||{};
-    const entries=Object.entries(data).sort((a,b)=>a[1].ts-b[1].ts);
+    const rawEntries=Object.entries(data);
+    cleanupExpiredSystemMessages(rawEntries);
+    const now=Date.now();
+    const entries=rawEntries
+      .filter(([,msg])=>!(msg?.type==='system' && now-(msg.ts||0)>TRANSIENT_SYSTEM_MS))
+      .sort((a,b)=>(a[1].ts||0)-(b[1].ts||0));
     renderMessages(entries);
     // Bot: ilk yüklemede sadece key'i kaydet, kontrol etme
     if(!isFirstLoad && currentUser?.role==='owner'){
@@ -1006,11 +1042,19 @@ function listenMessages(){
 function renderMessages(entries){
   const container=document.getElementById('messagesContainer');
   container.innerHTML='<div class="day-divider">Bugün</div>';
+  const now=Date.now();
   let prevAuthor=null, currentGroup=null;
   entries.forEach(([key,msg])=>{
     if(localDeleted.has(key)) return;
     if(msg.type==='system'){
-      const div=document.createElement('div');div.className='sys-msg';div.textContent=msg.text;container.appendChild(div);prevAuthor=null;currentGroup=null;
+      const age=Math.max(0,now-(msg.ts||0));
+      if(age>=TRANSIENT_SYSTEM_MS) return;
+      const div=document.createElement('div');
+      div.className='sys-msg transient';
+      div.textContent=msg.text;
+      div.style.setProperty('--ttl',`${Math.max(0.35,(TRANSIENT_SYSTEM_MS-age)/1000)}s`);
+      container.appendChild(div);
+      prevAuthor=null;currentGroup=null;
     } else if(msg.type==='announce'){
       const div=document.createElement('div');div.className='announce-msg';div.textContent='📢 '+msg.text;container.appendChild(div);prevAuthor=null;currentGroup=null;
     } else if(msg.type==='poll'){
@@ -1560,7 +1604,25 @@ window.saveProfile=()=>{
 
 // ── CHANNELS ──
 window.openAddChannel=()=>{if(!currentUser)return;document.getElementById('addChannelModal').classList.remove('hidden');document.getElementById('newChannelName').focus();};
-window.createChannel=()=>{const name=document.getElementById('newChannelName').value.trim().toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9\-]/g,'');const desc=document.getElementById('newChannelDesc').value.trim();if(!name)return;set(ref(db,`channels/${name}`),{id:name,name,desc,order:Date.now(),createdBy:currentUser.name});push(ref(db,`messages/${name}`),{type:'system',text:`📢 #${name} kanalı ${currentUser.name} tarafından oluşturuldu!`,ts:Date.now()});document.getElementById('newChannelName').value='';document.getElementById('newChannelDesc').value='';closeModal('addChannelModal');switchChannel(name,name,desc);};
+window.createChannel=async()=>{
+  const rawName=document.getElementById('newChannelName').value.trim().toLowerCase();
+  const name=rawName
+    .replace(/ı/g,'i').replace(/ğ/g,'g').replace(/ü/g,'u').replace(/ş/g,'s').replace(/ö/g,'o').replace(/ç/g,'c')
+    .replace(/\s+/g,'-')
+    .replace(/[^a-z0-9\-]/g,'')
+    .replace(/\-+/g,'-')
+    .replace(/^\-|\-$/g,'');
+  const desc=document.getElementById('newChannelDesc').value.trim();
+  if(!name||name.length<2){alert('Kanal adı en az 2 karakter olmalı.');return;}
+  const existing=await get(ref(db,`channels/${name}`));
+  if(existing.exists()){alert('Bu kanal zaten var.');return;}
+  set(ref(db,`channels/${name}`),{id:name,name,desc,order:Date.now(),createdBy:currentUser.name});
+  push(ref(db,`messages/${name}`),{type:'system',text:`📢 #${name} kanalı ${currentUser.name} tarafından oluşturuldu!`,ts:Date.now()});
+  document.getElementById('newChannelName').value='';
+  document.getElementById('newChannelDesc').value='';
+  closeModal('addChannelModal');
+  switchChannel(name,name,desc);
+};
 window.deleteChannel=(id,name)=>{if(currentUser?.role!=='owner')return;showConfirm(`#${name} silinsin mi?`,`Bu kanal ve içindeki tüm mesajlar kalıcı olarak silinecek.`,()=>{remove(ref(db,`channels/${id}`));remove(ref(db,`messages/${id}`));if(currentChannel===id)switchChannel('genel','genel','Genel sohbet kanalı');});};
 
 // ── BORED ──
