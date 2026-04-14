@@ -319,25 +319,6 @@ header{background:var(--surface);border-bottom:2px solid var(--border);padding:0
 .slowmode-inline{font-size:0.7rem;font-weight:800;color:var(--accent3);font-family:'Space Mono',monospace;white-space:nowrap;flex-shrink:0;display:none;align-items:center;gap:3px;}
 .slowmode-inline.active{display:flex;}
 .slowmode-inline.blocking{color:#ef476f;}
-
-/* Sistem mesajı fade */
-@keyframes sysFadeOut{0%{opacity:1;transform:translateY(0)}80%{opacity:1}100%{opacity:0;transform:translateY(-6px)}}
-.sys-msg.fading{animation:sysFadeOut 0.6s ease forwards;}
-
-/* SES KANALLARI */
-.voice-section{padding:8px 12px 4px;}
-.voice-channel-item{display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:7px;cursor:pointer;font-size:0.82rem;font-weight:700;color:var(--muted);transition:background 0.15s;}
-.voice-channel-item:hover{background:rgba(255,255,255,0.05);color:var(--text);}
-.voice-channel-item.active-voice{color:#06d6a0;background:rgba(6,214,160,0.1);}
-.voice-participants{display:flex;flex-wrap:wrap;gap:3px;margin-left:20px;margin-top:2px;}
-.voice-participant{font-size:0.65rem;background:rgba(6,214,160,0.15);color:#06d6a0;border-radius:4px;padding:1px 5px;font-weight:700;}
-.voice-bar{position:fixed;bottom:0;left:0;right:0;background:#111;border-top:2px solid #06d6a0;padding:8px 16px;display:flex;align-items:center;gap:10px;z-index:200;font-size:0.82rem;font-weight:700;}
-.voice-bar-name{color:#06d6a0;flex:1;}
-.voice-bar-btn{background:rgba(255,255,255,0.1);border:none;border-radius:8px;color:#fff;padding:6px 12px;cursor:pointer;font-size:0.82rem;font-weight:700;transition:background 0.15s;}
-.voice-bar-btn:hover{background:rgba(255,255,255,0.2);}
-.voice-bar-btn.danger{background:rgba(239,71,111,0.3);color:#ef476f;}
-.voice-bar-btn.danger:hover{background:rgba(239,71,111,0.5);}
-.voice-bar-btn.active{background:rgba(6,214,160,0.3);color:#06d6a0;}
 .hidden{display:none!important;}
 /* MOBİL */
 @media(max-width:768px){
@@ -367,15 +348,7 @@ header{background:var(--surface);border-bottom:2px solid var(--border);padding:0
 <body>
 
 <!-- LOGIN -->
-<div class="voice-bar hidden" id="voiceBar">
-  <span>🎙️</span>
-  <span class="voice-bar-name" id="voiceBarName">Ses Kanalı</span>
-  <audio id="localAudio" muted autoplay></audio>
-  <div id="remoteAudios"></div>
-  <button class="voice-bar-btn active" id="micBtn" onclick="toggleMic()">🎤 Açık</button>
-  <button class="voice-bar-btn danger" onclick="leaveVoice()">📵 Ayrıl</button>
-</div>
-<div class="sidebar-overlay"  id="sidebarOverlay" onclick="toggleSidebar()"></div>
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
 <div id="loginScreen">
   <div class="login-box">
     <span class="login-emoji">💬</span>
@@ -431,11 +404,6 @@ header{background:var(--surface);border-bottom:2px solid var(--border);padding:0
       <div class="sidebar-section">
         <div class="sidebar-label">Kanallar<span class="add-ch-btn" onclick="openAddChannel()">+</span></div>
         <div id="channelList"></div>
-      </div>
-      <div class="sidebar-divider"></div>
-      <div class="voice-section">
-        <div class="sidebar-label">Ses Kanalları<span class="add-ch-btn" onclick="openAddVoiceChannel()" title="Ses kanalı ekle">+</span></div>
-        <div id="voiceChannelList"></div>
       </div>
       <div class="sidebar-divider"></div>
       <div class="sidebar-section"><div class="sidebar-label">Çevrimiçi</div></div>
@@ -610,7 +578,6 @@ const GRAD_COLORS = ['#ff6b35','#ffd700','#3ecfcf','#7b5ea7','#ef476f','#84dcc6'
 const FUN_LINKS = ['https://www.geoguessr.com','https://neal.fun/infinite-craft/','https://skribbl.io','https://garticphone.com','https://www.sporcle.com','https://typeracer.com','https://lichess.org','https://2048.la','https://www.coolmathgames.com','https://poki.com','https://wordletr.net','https://www.chess.com/play/computer'];
 
 let currentUser = null, currentChannel = 'genel', typingTimer = null;
-let muteCache = {muted: false, lastCheck: 0}; // mute durumu cache
 // ── RATE LIMIT ──
 const MSG_TIMESTAMPS = []; // Son mesaj zamanları
 const RATE_LIMIT_COUNT = 4;  // 5 saniyede max mesaj
@@ -847,7 +814,7 @@ window.joinChat=async()=>{
   if(role==='owner') document.getElementById('ownerToolsBtn').classList.remove('hidden');
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('app').style.display='flex';
-  setupOnlinePresence(); setupInput(); listenChannels(); listenOnline(); listenTyping(); listenVoiceChannels();
+  setupOnlinePresence(); setupInput(); listenChannels(); listenOnline(); listenTyping();
   push(ref(db,'messages/genel'),{type:'system',text:`${avatar} ${name} sohbete katıldı!`,ts:Date.now()});
 };
 
@@ -874,7 +841,6 @@ function setupOnlinePresence(){
 }
 
 window.logout=()=>{
-  if(currentVoiceChannel) leaveVoice();
   if(currentUser){ push(ref(db,`messages/${currentChannel}`),{type:'system',text:`👋 ${currentUser.avatar} ${currentUser.name} ayrıldı.`,ts:Date.now()}); if(myOnlineRef) remove(myOnlineRef); if(myTypingRef) remove(myTypingRef); if(presenceInterval) clearInterval(presenceInterval); [unsubMessages,unsubPinned,unsubSlowMode,unsubAnnounce,unsubTyping].forEach(u=>u&&u()); }
   currentUser=null;
   document.getElementById('loginScreen').style.display='flex';
@@ -888,15 +854,9 @@ window.sendMessage=async()=>{
   // İsim güvenlik kontrolü
   const safeName=currentUser.name||'';
   if(safeName.length<2||safeName.length>30){return;}
-  // Check mute (cache: 10 saniyede bir Firebase'e git)
-  const now0=Date.now();
-  if(now0-muteCache.lastCheck > 10000){
-    try{
-      const muteSnap=await get(ref(db,`muted/${currentUser.name}`));
-      muteCache={muted:!!muteSnap.val(), lastCheck:now0};
-    }catch(e){ muteCache.lastCheck=now0; }
-  }
-  if(muteCache.muted){input.placeholder='🔇 Susturuldunuz, mesaj gönderemezsiniz.';input.style.borderColor='#ef476f';setTimeout(()=>{input.placeholder='Bir mesaj yaz...';input.style.borderColor='';},2000);return;}
+  // Check mute
+  const muteSnap=await get(ref(db,`muted/${currentUser.name}`));
+  if(muteSnap.val()){input.placeholder='🔇 Susturuldunuz, mesaj gönderemezsiniz.';input.style.borderColor='#ef476f';setTimeout(()=>{input.placeholder='Bir mesaj yaz...';input.style.borderColor='';},2000);return;}
   // Rate limit kontrolü
   const now2=Date.now();
   if(now2<rateLimitedUntil){
@@ -920,10 +880,9 @@ window.sendMessage=async()=>{
     lastSentTime=now;
     startSlowCountdown();
   }
-  if(!currentUser) return;
   input.value=''; input.style.height='auto';
   if(myTypingRef) remove(myTypingRef); clearTimeout(typingTimer);
-  push(ref(db,`messages/${currentChannel}`),{type:'user',author:currentUser.name,avatar:currentUser.avatar,role:currentUser.role,title:currentUser.title,gradC1:currentUser.gradC1,gradC2:currentUser.gradC2,photoData:currentUser.photoData||null,text,ts:Date.now()});
+  if(!currentUser) return; push(ref(db,`messages/${currentChannel}`),{type:'user',author:currentUser.name,avatar:currentUser.avatar,role:currentUser.role,title:currentUser.title,gradC1:currentUser.gradC1,gradC2:currentUser.gradC2,photoData:currentUser.photoData||null,text,ts:Date.now()});
 };
 
 // ── CHANNELS ──
@@ -1052,12 +1011,6 @@ function renderMessages(entries){
     if(localDeleted.has(key)) return;
     if(msg.type==='system'){
       const div=document.createElement('div');div.className='sys-msg';div.textContent=msg.text;container.appendChild(div);prevAuthor=null;currentGroup=null;
-      // 5 saniye sonra fade out
-      const msgAge = Date.now() - (msg.ts||0);
-      const delay = Math.max(0, 5000 - msgAge);
-      if(delay < 30000){ // 30 sn'den yeni mesajlara uygula
-        setTimeout(()=>{ if(div.parentNode){ div.classList.add('fading'); setTimeout(()=>div.remove(),600); }}, delay);
-      }
     } else if(msg.type==='announce'){
       const div=document.createElement('div');div.className='announce-msg';div.textContent='📢 '+msg.text;container.appendChild(div);prevAuthor=null;currentGroup=null;
     } else if(msg.type==='poll'){
@@ -1494,7 +1447,6 @@ function listenOnline(){
   });
 }
 window.toggleMute=async(name,btn)=>{
-  if(name===currentUser?.name) muteCache={muted:false,lastCheck:0}; // kendi cache'ini sıfırla
   if(currentUser?.role!=='owner')return;
   const snap=await get(ref(db,`muted/${name}`));
   if(snap.val()){
@@ -1623,181 +1575,6 @@ function setupInput(){
   input.addEventListener('input',()=>{
     input.style.height='auto';input.style.height=Math.min(input.scrollHeight,150)+'px';
     if(currentUser){myTypingRef=ref(db,`typing/${currentChannel}/${currentUser.name}`);set(myTypingRef,Date.now());clearTimeout(typingTimer);typingTimer=setTimeout(()=>{if(myTypingRef)remove(myTypingRef);},3000);}
-  });
-}
-
-
-// ── SES KANALLARI (WebRTC) ──
-let currentVoiceChannel = null;
-let localStream = null;
-let peerConnections = {}; // {username: RTCPeerConnection}
-let micMuted = false;
-const ICE_SERVERS = {iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]};
-
-// Ses kanallarını dinle
-function listenVoiceChannels(){
-  onValue(ref(db,'voiceChannels'),snap=>{
-    const data=snap.val()||{};
-    const list=document.getElementById('voiceChannelList');
-    if(!list) return;
-    list.innerHTML='';
-    // Varsayılan kanallar yoksa oluştur
-    if(!data['genel-ses']) set(ref(db,'voiceChannels/genel-ses'),{name:'Genel Ses',id:'genel-ses'});
-    Object.values(data).forEach(ch=>{
-      const item=document.createElement('div');
-      item.className='voice-channel-item'+(currentVoiceChannel===ch.id?' active-voice':'');
-      item.innerHTML=`🔊 ${ch.name}`;
-      item.onclick=()=>joinVoice(ch.id,ch.name);
-      list.appendChild(item);
-      // Katılımcıları göster
-      onValue(ref(db,`voicePresence/${ch.id}`),pSnap=>{
-        const ps=pSnap.val()||{};
-        const names=Object.keys(ps);
-        let pDiv=item.querySelector('.voice-participants');
-        if(!pDiv){pDiv=document.createElement('div');pDiv.className='voice-participants';item.appendChild(pDiv);}
-        pDiv.innerHTML=names.map(n=>`<span class="voice-participant">🎤${n}</span>`).join('');
-        // Yeni katılan varsa WebRTC bağlantısı kur
-        if(currentVoiceChannel===ch.id) handleNewVoicePeers(names);
-      });
-    });
-  });
-}
-
-window.openAddVoiceChannel=()=>{
-  const name=prompt('Ses kanalı adı:');
-  if(!name||!name.trim()) return;
-  const id=name.trim().toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
-  if(!id) return;
-  set(ref(db,`voiceChannels/${id}`),{name:name.trim(),id,createdBy:currentUser.name});
-};
-
-async function joinVoice(channelId, channelName){
-  if(currentVoiceChannel===channelId) return;
-  if(currentVoiceChannel) await leaveVoice();
-  try{
-    localStream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});
-    document.getElementById('localAudio').srcObject=localStream;
-  }catch(e){
-    alert('❌ Mikrofon erişimi reddedildi veya bulunamadı.');return;
-  }
-  currentVoiceChannel=channelId;
-  // Firebase'e presence yaz
-  const presRef=ref(db,`voicePresence/${channelId}/${currentUser.name}`);
-  set(presRef,{name:currentUser.name,ts:Date.now()});
-  onDisconnect(presRef).remove();
-  // Voice bar göster
-  document.getElementById('voiceBar').classList.remove('hidden');
-  document.getElementById('voiceBarName').textContent='🔊 '+channelName;
-  // Signaling dinle
-  listenVoiceSignals(channelId);
-  // Mevcut katılımcılara offer gönder
-  const snap=await get(ref(db,`voicePresence/${channelId}`));
-  const peers=Object.keys(snap.val()||{}).filter(n=>n!==currentUser.name);
-  for(const peer of peers) await createOffer(peer, channelId);
-}
-
-async function leaveVoice(){
-  if(!currentVoiceChannel) return;
-  // Presence kaldır
-  remove(ref(db,`voicePresence/${currentVoiceChannel}/${currentUser.name}`));
-  // Signaling temizle
-  remove(ref(db,`voiceSignal/${currentVoiceChannel}/${currentUser.name}`));
-  // PeerConnections kapat
-  Object.values(peerConnections).forEach(pc=>pc.close());
-  peerConnections={};
-  // Stream durdur
-  if(localStream) localStream.getTracks().forEach(t=>t.stop());
-  localStream=null;
-  // Remote audio temizle
-  document.getElementById('remoteAudios').innerHTML='';
-  document.getElementById('voiceBar').classList.add('hidden');
-  currentVoiceChannel=null;
-}
-
-window.toggleMic=()=>{
-  if(!localStream) return;
-  micMuted=!micMuted;
-  localStream.getAudioTracks().forEach(t=>t.enabled=!micMuted);
-  const btn=document.getElementById('micBtn');
-  btn.textContent=micMuted?'🔇 Kapalı':'🎤 Açık';
-  btn.className=micMuted?'voice-bar-btn danger':'voice-bar-btn active';
-};
-
-window.leaveVoice=leaveVoice;
-
-async function createOffer(targetUser, channelId){
-  const pc=createPC(targetUser,channelId);
-  const offer=await pc.createOffer();
-  await pc.setLocalDescription(offer);
-  set(ref(db,`voiceSignal/${channelId}/${currentUser.name}/${targetUser}/offer`),{sdp:offer.sdp,type:offer.type});
-}
-
-function createPC(targetUser, channelId){
-  if(peerConnections[targetUser]){peerConnections[targetUser].close();}
-  const pc=new RTCPeerConnection(ICE_SERVERS);
-  peerConnections[targetUser]=pc;
-  // Local stream ekle
-  if(localStream) localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
-  // Remote stream al
-  pc.ontrack=e=>{
-    let audio=document.getElementById('remoteAudio-'+targetUser);
-    if(!audio){
-      audio=document.createElement('audio');
-      audio.id='remoteAudio-'+targetUser;
-      audio.autoplay=true;
-      document.getElementById('remoteAudios').appendChild(audio);
-    }
-    audio.srcObject=e.streams[0];
-  };
-  // ICE candidates
-  pc.onicecandidate=e=>{
-    if(e.candidate){
-      push(ref(db,`voiceSignal/${channelId}/${currentUser.name}/${targetUser}/ice`),{candidate:e.candidate.candidate,sdpMid:e.candidate.sdpMid,sdpMLineIndex:e.candidate.sdpMLineIndex});
-    }
-  };
-  return pc;
-}
-
-function listenVoiceSignals(channelId){
-  // Gelen offer/answer/ice dinle
-  onValue(ref(db,`voiceSignal/${channelId}`),async snap=>{
-    const data=snap.val()||{};
-    for(const [fromUser,toUsers] of Object.entries(data)){
-      if(fromUser===currentUser.name) continue;
-      const toMe=toUsers[currentUser.name];
-      if(!toMe) continue;
-      // Offer geldi
-      if(toMe.offer && (!peerConnections[fromUser]||peerConnections[fromUser].signalingState==='closed')){
-        const pc=createPC(fromUser,channelId);
-        await pc.setRemoteDescription(new RTCSessionDescription(toMe.offer));
-        const answer=await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        set(ref(db,`voiceSignal/${channelId}/${currentUser.name}/${fromUser}/answer`),{sdp:answer.sdp,type:answer.type});
-      }
-      // Answer geldi
-      if(toMe.answer && peerConnections[fromUser] && peerConnections[fromUser].signalingState==='have-local-offer'){
-        try{ await peerConnections[fromUser].setRemoteDescription(new RTCSessionDescription(toMe.answer)); }catch(e){}
-      }
-      // ICE candidates
-      if(toMe.ice && peerConnections[fromUser]){
-        const pc=peerConnections[fromUser];
-        if(pc.remoteDescription){
-          Object.values(toMe.ice).forEach(async ice=>{
-            try{ await pc.addIceCandidate(new RTCIceCandidate(ice)); }catch(e){}
-          });
-        }
-      }
-    }
-  });
-}
-
-function handleNewVoicePeers(names){
-  names.forEach(async name=>{
-    if(name===currentUser.name) return;
-    if(!peerConnections[name]||peerConnections[name].connectionState==='closed'){
-      // Sadece alfabetik olarak küçük olan offer atar (çakışmayı önler)
-      if(currentUser.name < name) await createOffer(name, currentVoiceChannel);
-    }
   });
 }
 
