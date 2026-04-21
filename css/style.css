@@ -422,4 +422,13 @@ header{background:var(--surface);border-bottom:2px solid var(--border);padding:0
 header, .sidebar, .chat-header, .login-box, .modal { backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
 .msg-bubble { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 14px; }
 .msg-bubble.own { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 14px 4px 14px 14px; }
-.input-box, .poll-bubble { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.input-box, .poll-bubble { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+
+/* ═══ ANTIGRAVITY ═══ */
+.antigravity-btn { background: linear-gradient(135deg, #3ecfcf, #7b5ea7) !important; position: relative; overflow: hidden; }
+.antigravity-btn.active { background: linear-gradient(135deg, #ef476f, #ffd700) !important; box-shadow: 0 0 20px rgba(239,71,111,0.5), 0 0 40px rgba(255,215,0,0.2); animation: antigravPulse 1.5s ease-in-out infinite; }
+@keyframes antigravPulse { 0%,100% { box-shadow: 0 0 20px rgba(239,71,111,0.5); } 50% { box-shadow: 0 0 30px rgba(239,71,111,0.7), 0 0 60px rgba(255,215,0,0.3); } }
+#matterCanvas { position: absolute; inset: 0; z-index: 30; pointer-events: all; }
+.chat-area.antigravity-active #messagesContainer { opacity: 0; pointer-events: none; transition: opacity 0.4s ease; }
+.chat-area.antigravity-active .input-area { position: relative; z-index: 40; }
+.chat-area.antigravity-active .chat-header { position: relative; z-index: 40; }
