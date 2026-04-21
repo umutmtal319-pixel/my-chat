@@ -384,7 +384,6 @@ window.joinVoiceChannel = async (channelId) => {
   updateVcStatusBar(channelId);
   updateVcButtons();
   openVcOverlay();
-  push(ref(db, `messages/${currentChannel}`), { type:'system', text:`🔊 ${currentUser.name} "${channelId}" ses kanalına katıldı.`, ts:Date.now() });
 };
 
 // ── Mikrofon toggle ──
@@ -443,7 +442,9 @@ window.leaveVoiceChannel = async (silent=false) => {
   if (bar) bar.classList.remove('visible');
   const mb2 = document.getElementById('vcMicBtn'); if (mb2) { mb2.classList.remove('active'); mb2.textContent = '🎙️ Mic'; }
   const cb2 = document.getElementById('vcCamBtn'); if (cb2) { cb2.classList.remove('active'); cb2.textContent = '📷 Kamera'; }
-  if (!silent) push(ref(db, `messages/${currentChannel}`), { type:'system', text:`🔇 ${currentUser.name} ses kanalından ayrıldı.`, ts:Date.now() });
+  if (currentUser && !silent) {
+    // No system message for leaving voice channel
+  }
 };
 
 function updateVcStatusBar(channelId) {
@@ -1465,15 +1466,15 @@ function startAntigravity() {
   ];
   Composite.add(matterEngine.world, walls);
 
-  // Mesajlardan fizik gövdeleri oluştur
-  const msgEls = document.querySelectorAll('#messagesContainer .msg-bubble, #messagesContainer .msg-avatar, #messagesContainer .sys-msg');
+  // Mesajlardan fizik gövdeleri oluştur (sistem mesajlarını atla)
+  const msgEls = document.querySelectorAll('#messagesContainer .msg-bubble, #messagesContainer .msg-avatar');
   const maxBodies = 30; // Performans için
   let count = 0;
 
   msgEls.forEach(el => {
     if (count >= maxBodies) return;
     const text = el.textContent?.trim().substring(0, 20) || '💬';
-    const isAvatar = el.classList.contains('msg-avatar') || el.classList.contains('sys-msg');
+    const isAvatar = el.classList.contains('msg-avatar');
     const bodyW = isAvatar ? 40 + Math.random() * 20 : 80 + Math.random() * 100;
     const bodyH = isAvatar ? bodyW : 30 + Math.random() * 25;
     const x = 40 + Math.random() * (W - 80);
