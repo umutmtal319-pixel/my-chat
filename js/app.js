@@ -68,7 +68,56 @@ let gradC1 = GRAD_COLORS[0], gradC2 = GRAD_COLORS[2];
 let slowMode = false;
 let unsubMessages=null,unsubPinned=null,unsubSlowMode=null,unsubAnnounce=null,unsubTyping=null;
 let presenceInterval=null;
+let presenceInterval=null;
 let localDeleted = new Set(JSON.parse(localStorage.getItem('localDeleted')||'[]'));
+
+// ─── YARDIMCI FONKSİYONLAR ───
+window.showToast = (msg, type='info') => {
+  const c = document.getElementById('toastContainer') || (() => {
+    const el = document.createElement('div');
+    el.id = 'toastContainer';
+    el.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none;';
+    document.body.appendChild(el);
+    return el;
+  })();
+  const t = document.createElement('div');
+  const bg = type==='error' ? 'rgba(239,71,111,0.9)' : type==='success' ? 'rgba(35,165,89,0.9)' : 'rgba(34,33,58,0.9)';
+  t.style.cssText = `background:${bg};backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:#fff;padding:10px 18px;border-radius:12px;font-weight:700;font-size:0.85rem;box-shadow:0 8px 24px rgba(0,0,0,0.3);animation:toastIn 0.3s cubic-bezier(0.34,1.56,0.64,1);`;
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => {
+    t.style.transition = 'all 0.3s ease';
+    t.style.opacity = '0';
+    t.style.transform = 'translateY(10px) scale(0.9)';
+    setTimeout(()=>t.remove(), 300);
+  }, 3000);
+};
+
+function compressImage(file, maxWidth = 800, quality = 0.6) {
+  return new Promise((resolve) => {
+    if (!file.type.startsWith('image/')) {
+      const r = new FileReader();
+      r.onload = ev => resolve(ev.target.result);
+      r.readAsDataURL(file);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if (w > maxWidth) { h = Math.round(h * (maxWidth / w)); w = maxWidth; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 // ═══════════════════════════════════════════
 //   WebRTC — Düzeltilmiş & Güvenilir Versiyon
@@ -317,7 +366,7 @@ window.joinVoiceChannel = async (channelId) => {
   try {
     vcState.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
     vcState.micMuted = false; vcState.camOff = true;
-  } catch(e) { alert('❌ Mikrofon erişimi reddedildi.\n' + e.message); return; }
+  } catch(e) { window.showToast('❌ Mikrofon erişimi reddedildi.', 'error'); return; }
   playTone('join');
   vcState.currentChannel = channelId;
   const myVcRef = ref(db, `vc_members/${channelId}/${currentUser.name}`);
@@ -361,7 +410,7 @@ window.vcToggleCam = async () => {
         if (sender) sender.replaceTrack(vt); else pc.addTrack(vt, vcState.localStream);
       }
       playTone('cam_on');
-    } catch(e) { alert('❌ Kamera erişimi reddedildi.\n'+e.message); vcState.camOff = true; }
+    } catch(e) { window.showToast('❌ Kamera erişimi reddedildi.', 'error'); vcState.camOff = true; }
   } else {
     vcState.localStream.getVideoTracks().forEach(t=>{ t.stop(); try{vcState.localStream.removeTrack(t);}catch(e){} });
     for (const pc of Object.values(vcState.peers)) {
@@ -573,17 +622,14 @@ function listenVcChannels() {
 }
 
 // ─── PP UPLOAD ───
-document.getElementById('photoFileInput').onchange = e => {
+document.getElementById('photoFileInput').onchange = async e => {
   const file = e.target.files[0]; if (!file) return;
-  const r = new FileReader();
-  r.onload = ev => {
-    loginPhotoData = ev.target.result;
-    const prev = document.getElementById('ppPreviewBig');
-    prev.innerHTML = `<img src="${loginPhotoData}" alt="pp"/>`;
-    document.getElementById('ppUploadArea').classList.add('has-photo');
-    document.querySelectorAll('.avatar-btn').forEach(b => b.classList.remove('selected'));
-  };
-  r.readAsDataURL(file);
+  loginPhotoData = await compressImage(file, 200, 0.7);
+  const prev = document.getElementById('ppPreviewBig');
+  prev.innerHTML = `<img src="${loginPhotoData}" alt="pp"/>`;
+  document.getElementById('ppUploadArea').classList.add('has-photo');
+  document.querySelectorAll('.avatar-btn').forEach(b => b.classList.remove('selected'));
+  e.target.value = '';
 };
 
 // ─── AVATAR PICKER ───
@@ -657,23 +703,33 @@ window.sendAttachments=async()=>{
         photoData:currentUser.photoData||null,ts:Date.now()};
       if(f.isImage){await push(ref(db,`messages/${currentChannel}`),{...base,type:'image',imgData:f.data});}
       else{await push(ref(db,`messages/${currentChannel}`),{...base,type:'file',fileName:f.name,fileSize:f.size,fileType:f.type,fileData:f.data});}
-    }catch(err){console.error('Dosya gönderilemedi:',err);alert('❌ "'+f.name+'" gönderilemedi.');}
+    }catch(err){console.error('Dosya gönderilemedi:',err);window.showToast('❌ "'+f.name+'" gönderilemedi.', 'error');}
   }
   pendingFiles=[];refreshAttachBar();
 };
 
-document.getElementById('fileInput').onchange = e => {
+document.getElementById('fileInput').onchange = async e => {
   if(!currentUser) return;
   const files=[...e.target.files];
   const MAX_SIZE=500*1024;
-  const tooBig=files.filter(f=>f.size>MAX_SIZE);
-  if(tooBig.length>0){alert(`❌ Çok büyük (max 500KB):\n${tooBig.map(f=>f.name).join('\n')}`);}
-  const valid=files.filter(f=>f.size<=MAX_SIZE);
-  if(!valid.length){e.target.value='';return;}
-  const readers=valid.map(file=>new Promise(res=>{
-    const r=new FileReader();r.onload=ev=>res({name:file.name,size:file.size,type:file.type,data:ev.target.result,isImage:file.type.startsWith('image/')});r.readAsDataURL(file);
-  }));
-  Promise.all(readers).then(results=>{pendingFiles.push(...results);refreshAttachBar();});
+  const tooBig = files.filter(f => !f.type.startsWith('image/') && f.size > MAX_SIZE);
+  if(tooBig.length > 0) { window.showToast(`❌ Çok büyük dosya (max 500KB):\n${tooBig.map(f=>f.name).join('\n')}`, 'error'); }
+  const valid = files.filter(f => f.type.startsWith('image/') || f.size <= MAX_SIZE);
+  if(!valid.length) { e.target.value=''; return; }
+  window.showToast('Görseller sıkıştırılıyor...', 'info');
+  const readers = valid.map(async file => {
+    const isImage = file.type.startsWith('image/');
+    const data = isImage ? await compressImage(file, 1000, 0.6) : await new Promise(res => {
+      const r = new FileReader(); r.onload = ev => res(ev.target.result); r.readAsDataURL(file);
+    });
+    const estSize = isImage ? Math.round(data.length * 0.75) : file.size;
+    return { name: file.name, size: estSize, type: file.type, data, isImage };
+  });
+  const results = await Promise.all(readers);
+  const finalResults = results.filter(r => r.size <= MAX_SIZE*1.5);
+  if(finalResults.length < results.length) window.showToast('Bazı resimler çok büyüktü.', 'error');
+  pendingFiles.push(...finalResults);
+  refreshAttachBar();
   e.target.value='';
 };
 
@@ -729,8 +785,8 @@ window.joinChat=async()=>{
   const role=document.querySelector('.role-opt.selected')?.dataset.role||'member';
   if(!name){document.getElementById('nameInput').style.borderColor='#ff4444';return;}
   const botPatterns=[/^bot[_\-\d]/i,/^fake[_\-]/i,/^load[_\-]test/i,/^spam/i,/^test[_\-\d]/i,/^\d{4,}/];
-  if(botPatterns.some(p=>p.test(name))){document.getElementById('nameInput').style.borderColor='#ff4444';alert('❌ Bu isim kullanılamaz.');return;}
-  if(role==='owner'){const codeOk=await checkOwnerCode(document.getElementById('ownerCodeInput').value);if(!codeOk){alert('❌ Kurucu kodu yanlış!');return;}}
+  if(botPatterns.some(p=>p.test(name))){document.getElementById('nameInput').style.borderColor='#ff4444';window.showToast('❌ Bu isim kullanılamaz.', 'error');return;}
+  if(role==='owner'){const codeOk=await checkOwnerCode(document.getElementById('ownerCodeInput').value);if(!codeOk){window.showToast('❌ Kurucu kodu yanlış!', 'error');return;}}
   currentUser={name,avatar,role,bio:bio||'',photoData:loginPhotoData||null,title:'',gradC1:GRAD_COLORS[0],gradC2:GRAD_COLORS[2]};
   const avatarBtns=[...document.querySelectorAll('.avatar-btn')];const avatarIdx=avatarBtns.findIndex(b=>b.classList.contains('selected'));
   localStorage.setItem('chatLogin',JSON.stringify({name,bio:bio||'',role,avatarIdx}));

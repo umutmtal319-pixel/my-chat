@@ -1,6 +1,6 @@
-:root{--bg:#0f0e17;--surface:#1a1927;--card:#22213a;--accent:#ff6b35;--accent2:#7b5ea7;--accent3:#3ecfcf;--text:#fffffe;--muted:#a7a9be;--border:#2e2d4a;--owner:#ffd700;--vc-green:#23a559;--vc-red:#ed4245;--vc-yellow:#faa81a;}
+:root{--bg:#0f0e17;--surface:rgba(26,25,39,0.7);--card:rgba(34,33,58,0.5);--accent:#ff6b35;--accent2:#7b5ea7;--accent3:#3ecfcf;--text:#fffffe;--muted:#a7a9be;--border:rgba(255,255,255,0.08);--owner:#ffd700;--vc-green:#23a559;--vc-red:#ed4245;--vc-yellow:#faa81a;}
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden;}
+body{font-family:'Nunito',sans-serif;background:var(--bg);background-image:radial-gradient(circle at 15% 50%, rgba(123, 94, 167, 0.15), transparent 25%),radial-gradient(circle at 85% 30%, rgba(62, 207, 207, 0.15), transparent 25%);color:var(--text);height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden;}
 
 /* LOGIN */
 #loginScreen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:100;overflow-y:auto;padding:20px 0;}
@@ -416,3 +416,10 @@ header{background:var(--surface);border-bottom:2px solid var(--border);padding:0
   .role-badge{display:none;}
   .online-count{display:none;}
 }
+
+/* TOAST & GLASS */
+@keyframes toastIn { from { opacity: 0; transform: translate(-50%, 20px) scale(0.9); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+header, .sidebar, .chat-header, .login-box, .modal { backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+.msg-bubble { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 14px; }
+.msg-bubble.own { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 14px 4px 14px 14px; }
+.input-box, .poll-bubble { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
