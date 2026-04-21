@@ -68,7 +68,6 @@ let gradC1 = GRAD_COLORS[0], gradC2 = GRAD_COLORS[2];
 let slowMode = false;
 let unsubMessages=null,unsubPinned=null,unsubSlowMode=null,unsubAnnounce=null,unsubTyping=null;
 let presenceInterval=null;
-let presenceInterval=null;
 let localDeleted = new Set(JSON.parse(localStorage.getItem('localDeleted')||'[]'));
 
 // ─── YARDIMCI FONKSİYONLAR ───
