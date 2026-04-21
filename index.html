@@ -831,6 +831,10 @@ function createPC(peerName) {
   vcState.peers[peerName] = pc;
   vcState.pendingCandidates[peerName] = [];
 
+  pc.onnegotiationneeded = () => {
+    sendOffer(peerName);
+  };
+
   // Yerel track'leri ekle
   if (vcState.localStream) {
     vcState.localStream.getTracks().forEach(t => {
@@ -911,10 +915,12 @@ function upsertVideoTile(name, stream, userInfo) {
   const vid = document.getElementById('vcvid_'+name);
   const avDiv = document.getElementById('vctav_'+name);
   if (stream && vid) {
-    vid.srcObject = stream;
+    if (vid.srcObject !== stream) vid.srcObject = stream;
     const hasVideo = stream.getVideoTracks().some(t => t.enabled && t.readyState === 'live');
-    vid.style.display = hasVideo ? 'block' : 'none';
+    vid.style.display = 'block';
+    vid.style.opacity = hasVideo ? '1' : '0';
     if (avDiv) avDiv.style.display = hasVideo ? 'none' : 'flex';
+    vid.play().catch(e => console.warn('video play error', e));
   }
 }
 
@@ -978,6 +984,7 @@ async function sendOffer(peerName) {
   if (!pc) return;
   try {
     const offer = await pc.createOffer();
+    if (pc.signalingState !== 'stable') return;
     await pc.setLocalDescription(offer);
     const path = `vc_sig/${vcState.currentChannel}/${peerName}/${currentUser.name}`;
     await set(ref(db, path+'/offer'), { sdp: JSON.stringify(pc.localDescription), ts: Date.now() });
@@ -1018,10 +1025,11 @@ function listenSignals(channelId) {
         const pc = vcState.peers[senderName];
         for (const [iceKey, iceData] of Object.entries(data.ice)) {
           if (!iceData?.c) continue;
+          if (!pc) continue;
           try {
             const cand = new RTCIceCandidate(JSON.parse(iceData.c));
-            if (pc && pc.remoteDescription) { await pc.addIceCandidate(cand); }
-            else if (pc) { vcState.pendingCandidates[senderName] = vcState.pendingCandidates[senderName]||[]; vcState.pendingCandidates[senderName].push(JSON.parse(iceData.c)); }
+            if (pc.remoteDescription) { await pc.addIceCandidate(cand); }
+            else { vcState.pendingCandidates[senderName] = vcState.pendingCandidates[senderName]||[]; vcState.pendingCandidates[senderName].push(JSON.parse(iceData.c)); }
           } catch(e) {}
           remove(ref(db, `vc_sig/${channelId}/${currentUser.name}/${senderName}/ice/${iceKey}`));
         }
