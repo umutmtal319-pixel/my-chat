@@ -78,6 +78,12 @@
         <div class="vc-section" id="vcChannelList"></div>
       </div>
       <div class="sidebar-divider"></div>
+      <!-- ÖZEL MESAJLAR (DM) -->
+      <div class="sidebar-section">
+        <div class="sidebar-label">Özel Mesajlar<span class="add-ch-btn" id="addDmBtn" onclick="openNewDmModal()">+</span></div>
+        <div id="dmList"></div>
+      </div>
+      <div class="sidebar-divider"></div>
       <div class="sidebar-section"><div class="sidebar-label">Çevrimiçi</div></div>
       <div class="members-list" id="membersList"></div>
       <!-- SES DURUM ÇUBUĞU -->
@@ -321,6 +327,19 @@
 <!-- ═══════════════════════════════════════════════
      FIREBASE + CHAT JS (orijinal)
 ═══════════════════════════════════════════════ -->
+
+<!-- DM MODAL -->
+<div class="modal-overlay hidden" id="dmModal">
+  <div class="modal">
+    <h3>✉️ Yeni Özel Mesaj</h3><p>Çevrimiçi kullanıcılardan birini seç veya ara.</p>
+    <input class="modal-input" id="dmSearchInput" placeholder="Kullanıcı adı ara..." maxlength="30" oninput="filterDmUsers()"/>
+    <div id="dmUserList" style="max-height:240px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;margin-bottom:12px;"></div>
+    <div class="modal-btns">
+      <button class="modal-btn secondary" onclick="closeModal('dmModal')">Kapat</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.20.0/matter.min.js"></script>
 <script type="module" src="js/app.js"></script>
 

@@ -43,6 +43,8 @@ const GRAD_COLORS = ['#ff6b35','#ffd700','#3ecfcf','#7b5ea7','#ef476f','#84dcc6'
 const FUN_LINKS = ['https://www.geoguessr.com','https://neal.fun/infinite-craft/','https://skribbl.io','https://garticphone.com','https://www.sporcle.com','https://typeracer.com','https://lichess.org','https://2048.la','https://www.coolmathgames.com','https://poki.com','https://wordletr.net','https://www.chess.com/play/computer'];
 
 let currentUser = null, currentChannel = 'genel', typingTimer = null;
+let dmMode = false, currentDmRoom = null, unsubDmMessages = null, unsubDmRooms = null;
+let dmRoomsCache = {}, onlineUsersCache = {};
 const MSG_TIMESTAMPS = [];
 const RATE_LIMIT_COUNT = 4;
 const RATE_LIMIT_WINDOW = 5000;
@@ -815,6 +817,9 @@ window.joinChat=async()=>{
   // VC kanallarını biraz gecikmeli dinle — DOM hazır olsun
   setTimeout(()=>listenVcChannels(), 200);
 
+  // DM odalarını dinle
+  setTimeout(()=>listenMyDmRooms(), 300);
+
   push(ref(db,'messages/genel'),{type:'system',text:`${avatar} ${name} sohbete katıldı!`,ts:Date.now()});
 };
 
@@ -885,6 +890,8 @@ function renderChannels(channels){
   });
 }
 function switchChannel(id,name,desc){
+  // DM modundan çık
+  if(dmMode){if(unsubDmMessages){unsubDmMessages();unsubDmMessages=null;}dmMode=false;currentDmRoom=null;const hh=document.querySelector('.chat-header-hash,.chat-header-dm-icon');if(hh){hh.textContent='#';hh.className='chat-header-hash';}document.querySelectorAll('.dm-item').forEach(el=>el.classList.remove('active'));}
   currentChannel=id;document.getElementById('chatHeaderName').textContent=name;document.getElementById('chatHeaderDesc').textContent=desc;
   document.getElementById('activeChanBadge').textContent='#'+name;document.getElementById('messagesContainer').innerHTML='<div class="day-divider">Bugün</div>';
   if(currentUser?.role==='owner')document.getElementById('ownerToolsBtn').classList.remove('hidden');
@@ -1591,3 +1598,404 @@ function stopAntigravity() {
     window._antigravResize = null;
   }
 }
+
+// ═══════════════════════════════════════════
+//  DM (ÖZEL MESAJ) SİSTEMİ
+// ═══════════════════════════════════════════
+
+// Deterministik oda ID: iki kullanıcı adını sırala ve birleştir
+function getDmRoomId(userA, userB) {
+  const sorted = [userA.toLowerCase(), userB.toLowerCase()].sort();
+  return sorted[0] + '__' + sorted[1];
+}
+
+// Karşı tarafın adını room verisinden çıkar
+function getDmPartnerName(roomData) {
+  if (!roomData?.participantList || !currentUser) return '?';
+  return roomData.participantList.find(n => n !== currentUser.name) || '?';
+}
+
+// ── Yeni DM modalı aç ──
+window.openNewDmModal = () => {
+  if (!currentUser) { window.showToast('Önce giriş yapmalısın!', 'error'); return; }
+  const modal = document.getElementById('dmModal');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+  document.getElementById('dmSearchInput').value = '';
+  renderDmUserList();
+  setTimeout(() => document.getElementById('dmSearchInput')?.focus(), 150);
+};
+
+// DM modalını da kapatılabilir yap
+document.getElementById('dmModal')?.addEventListener('click', e => {
+  if (e.target.id === 'dmModal') closeModal('dmModal');
+});
+
+// Kullanıcı listesini çiz (çevrimiçi listesinden)
+function renderDmUserList(filterText) {
+  const list = document.getElementById('dmUserList');
+  if (!list) return;
+  list.innerHTML = '';
+  const filter = (filterText || '').toLowerCase();
+
+  Object.entries(onlineUsersCache).forEach(([name, data]) => {
+    if (name === currentUser?.name) return;
+    if (filter && !name.toLowerCase().includes(filter)) return;
+
+    const item = document.createElement('div');
+    item.className = 'dm-user-pick';
+    item.onclick = () => { closeModal('dmModal'); openOrCreateDm(name, data); };
+
+    const av = document.createElement('div');
+    av.className = 'dm-user-pick-av';
+    if (data.photoData) { av.innerHTML = `<img src="${data.photoData}" alt="pp"/>`; }
+    else { av.textContent = data.avatar || name.charAt(0).toUpperCase(); }
+
+    const info = document.createElement('div');
+    info.style.cssText = 'flex:1;min-width:0;';
+    const nameEl = document.createElement('div');
+    nameEl.className = 'dm-user-pick-name';
+    nameEl.textContent = name;
+    const status = document.createElement('div');
+    status.className = 'dm-user-pick-status';
+    status.textContent = '🟢 Çevrimiçi';
+    info.appendChild(nameEl);
+    info.appendChild(status);
+
+    item.appendChild(av);
+    item.appendChild(info);
+    list.appendChild(item);
+  });
+
+  if (list.children.length === 0) {
+    list.innerHTML = '<div style="padding:12px;text-align:center;color:var(--muted);font-size:0.8rem;">Kullanıcı bulunamadı.</div>';
+  }
+}
+
+window.filterDmUsers = () => {
+  const val = document.getElementById('dmSearchInput')?.value || '';
+  renderDmUserList(val);
+};
+
+// ── DM aç veya oluştur ──
+async function openOrCreateDm(targetName, targetData) {
+  if (!currentUser) return;
+  const roomId = getDmRoomId(currentUser.name, targetName);
+
+  // Oda zaten var mı kontrol et
+  const snap = await get(ref(db, `dm_rooms/${roomId}`));
+  if (!snap.val()) {
+    // Yeni oda oluştur
+    await set(ref(db, `dm_rooms/${roomId}`), {
+      participants: { [currentUser.name]: true, [targetName]: true },
+      participantList: [currentUser.name, targetName],
+      lastMessage: '',
+      lastMessageBy: '',
+      lastMessageTs: Date.now(),
+      createdAt: Date.now()
+    });
+  }
+
+  switchToDm(roomId, targetName, targetData);
+}
+
+// ── DM moduna geç ──
+function switchToDm(roomId, partnerName, partnerData) {
+  // Önceki dinleyicileri kapat
+  if (unsubDmMessages) { unsubDmMessages(); unsubDmMessages = null; }
+
+  dmMode = true;
+  currentDmRoom = roomId;
+
+  // Chat header'ı DM moduna geçir
+  const hashEl = document.getElementById('chatHeaderHash') || document.querySelector('.chat-header-hash');
+  const nameEl = document.getElementById('chatHeaderName');
+  const descEl = document.getElementById('chatHeaderDesc');
+  if (hashEl) hashEl.textContent = '@';
+  if (hashEl) hashEl.className = 'chat-header-dm-icon';
+  if (nameEl) nameEl.textContent = partnerName || '?';
+  if (descEl) descEl.textContent = 'Özel mesaj';
+
+  // Owner tools ve slowmode gizle
+  document.getElementById('ownerToolsBtn')?.classList.add('hidden');
+  document.getElementById('slowmodeBadge')?.classList.remove('visible');
+  document.getElementById('pinnedBar')?.classList.add('hidden');
+
+  // Kanal badge güncelle
+  const badge = document.getElementById('activeChanBadge');
+  if (badge) badge.textContent = '@' + (partnerName || '?');
+
+  // Sidebar DM active state
+  document.querySelectorAll('.dm-item').forEach(el => el.classList.toggle('active', el.dataset.roomId === roomId));
+  document.querySelectorAll('.channel-item').forEach(el => el.classList.remove('active'));
+
+  // Okunmamış sıfırla
+  markDmAsRead(roomId);
+
+  // Mesaj container temizle ve dinle
+  document.getElementById('messagesContainer').innerHTML = '<div class="day-divider">Özel Mesajlar</div>';
+  listenDmMessages(roomId);
+
+  // Mobilden sidebar kapat
+  if (window.innerWidth <= 900) {
+    const sb = document.querySelector('.sidebar');
+    const ov = document.getElementById('sidebarOverlay');
+    if (sb?.classList.contains('open')) { sb.classList.remove('open'); ov?.classList.remove('show'); }
+  }
+}
+
+// ── Kanal moduna geri dön ──
+window.switchToChannelMode = (channelId, channelName, channelDesc) => {
+  if (unsubDmMessages) { unsubDmMessages(); unsubDmMessages = null; }
+  dmMode = false;
+  currentDmRoom = null;
+
+  // Header'ı geri çevir
+  const hashEl = document.getElementById('chatHeaderHash') || document.querySelector('.chat-header-hash');
+  if (hashEl) { hashEl.textContent = '#'; hashEl.className = 'chat-header-hash'; }
+
+  // Sidebar active states
+  document.querySelectorAll('.dm-item').forEach(el => el.classList.remove('active'));
+};
+
+// ── DM mesajlarını dinle ──
+function listenDmMessages(roomId) {
+  const msgsQuery = query(ref(db, `dm_messages/${roomId}`), orderByKey(), limitToLast(80));
+  unsubDmMessages = onValue(msgsQuery, snapshot => {
+    const data = snapshot.val() || {};
+    const entries = Object.entries(data).sort((a, b) => a[1].ts - b[1].ts);
+    renderDmMessages(entries);
+  });
+}
+
+function renderDmMessages(entries) {
+  const container = document.getElementById('messagesContainer');
+  container.innerHTML = '<div class="day-divider">Özel Mesajlar</div>';
+  let prevAuthor = null;
+
+  entries.forEach(([key, msg]) => {
+    if (msg.type === 'system') {
+      const div = document.createElement('div');
+      div.className = 'sys-msg';
+      div.textContent = msg.text || '';
+      container.appendChild(div);
+      prevAuthor = null;
+      return;
+    }
+
+    const isOwn = msg.author === currentUser?.name;
+
+    // Yeni grup başlat mı?
+    if (msg.author !== prevAuthor) {
+      const group = document.createElement('div');
+      group.className = 'msg-group' + (isOwn ? ' own' : '');
+      const header = document.createElement('div');
+      header.className = 'msg-group-header';
+
+      const av = document.createElement('div');
+      av.className = 'msg-avatar';
+      if (msg.photoData) av.innerHTML = `<img src="${msg.photoData}" alt="pp"/>`;
+      else av.textContent = msg.avatar || '🧑';
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'msg-author';
+      nameSpan.textContent = msg.author;
+
+      const timeSpan = document.createElement('span');
+      timeSpan.className = 'msg-time';
+      const d = new Date(msg.ts);
+      timeSpan.textContent = d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
+
+      header.appendChild(av);
+      header.appendChild(nameSpan);
+      header.appendChild(timeSpan);
+      group.appendChild(header);
+      container.appendChild(group);
+    }
+
+    const lastGroup = container.querySelector('.msg-group:last-child') || container;
+    const bw = document.createElement('div');
+    bw.className = 'msg-bw';
+
+    if (msg.type === 'image' && msg.imgData) {
+      const img = document.createElement('img');
+      img.className = 'msg-img' + (isOwn ? ' own' : '');
+      img.src = msg.imgData;
+      img.onclick = () => { openImageViewer(msg.imgData); };
+      bw.appendChild(img);
+    } else {
+      const bubble = document.createElement('div');
+      bubble.className = 'msg-bubble' + (isOwn ? ' own' : '');
+      bubble.textContent = msg.text || '';
+      bw.appendChild(bubble);
+    }
+
+    lastGroup.appendChild(bw);
+    prevAuthor = msg.author;
+  });
+
+  container.scrollTop = container.scrollHeight;
+}
+
+// ── DM mesaj gönder ──
+window.sendDmMessage = async (text) => {
+  if (!currentUser || !currentDmRoom || !text) return;
+
+  const msgData = {
+    type: 'user',
+    author: currentUser.name,
+    avatar: currentUser.avatar,
+    photoData: currentUser.photoData || null,
+    text: text,
+    ts: Date.now()
+  };
+
+  await push(ref(db, `dm_messages/${currentDmRoom}`), msgData);
+
+  // Room meta güncelle
+  await set(ref(db, `dm_rooms/${currentDmRoom}/lastMessage`), text.substring(0, 50));
+  await set(ref(db, `dm_rooms/${currentDmRoom}/lastMessageBy`), currentUser.name);
+  await set(ref(db, `dm_rooms/${currentDmRoom}/lastMessageTs`), Date.now());
+
+  // Karşı tarafın unread sayısını artır
+  const roomSnap = await get(ref(db, `dm_rooms/${currentDmRoom}`));
+  const roomData = roomSnap.val();
+  if (roomData?.participantList) {
+    const partner = roomData.participantList.find(n => n !== currentUser.name);
+    if (partner) {
+      const unreadRef = ref(db, `dm_unread/${partner}/${currentDmRoom}`);
+      const unreadSnap = await get(unreadRef);
+      const cur = unreadSnap.val() || 0;
+      await set(unreadRef, cur + 1);
+    }
+  }
+};
+
+// ── Okunmamış sıfırla ──
+function markDmAsRead(roomId) {
+  if (!currentUser) return;
+  set(ref(db, `dm_unread/${currentUser.name}/${roomId}`), 0);
+}
+
+// ── DM odalarını dinle (sidebar) ──
+function listenMyDmRooms() {
+  if (!currentUser) return;
+
+  // Tüm dm_rooms'u dinle ve sadece benim katıldıklarımı filtrele
+  if (unsubDmRooms) { unsubDmRooms(); unsubDmRooms = null; }
+
+  unsubDmRooms = onValue(ref(db, 'dm_rooms'), snap => {
+    const allRooms = snap.val() || {};
+    dmRoomsCache = {};
+    Object.entries(allRooms).forEach(([id, data]) => {
+      if (data.participants && data.participants[currentUser.name]) {
+        dmRoomsCache[id] = data;
+      }
+    });
+    renderDmSidebar();
+  });
+
+  // Unread sayılarını dinle
+  onValue(ref(db, `dm_unread/${currentUser.name}`), snap => {
+    const unreadData = snap.val() || {};
+    // Re-render sidebar with unread counts
+    renderDmSidebar(unreadData);
+  });
+}
+
+// ── DM sidebar render ──
+function renderDmSidebar(unreadData) {
+  const list = document.getElementById('dmList');
+  if (!list) return;
+  list.innerHTML = '';
+
+  // Son mesaja göre sırala (en yeni üstte)
+  const rooms = Object.entries(dmRoomsCache).sort((a, b) => (b[1].lastMessageTs || 0) - (a[1].lastMessageTs || 0));
+
+  if (rooms.length === 0) {
+    list.innerHTML = '<div style="padding:4px 8px;font-size:0.72rem;color:var(--muted)">Henüz DM yok</div>';
+    return;
+  }
+
+  rooms.forEach(([roomId, data]) => {
+    const partnerName = getDmPartnerName(data);
+    const partnerOnline = !!onlineUsersCache[partnerName];
+    const partnerData = onlineUsersCache[partnerName] || {};
+    const unread = unreadData?.[roomId] || 0;
+
+    const item = document.createElement('div');
+    item.className = 'dm-item' + (currentDmRoom === roomId ? ' active' : '');
+    item.dataset.roomId = roomId;
+    item.onclick = () => switchToDm(roomId, partnerName, partnerData);
+
+    // Avatar with online dot
+    const avWrap = document.createElement('div');
+    avWrap.style.cssText = 'position:relative;flex-shrink:0;';
+    const av = document.createElement('div');
+    av.className = 'dm-item-av';
+    if (partnerData.photoData) av.innerHTML = `<img src="${partnerData.photoData}" alt="pp"/>`;
+    else av.textContent = partnerData.avatar || partnerName.charAt(0).toUpperCase();
+    const dot = document.createElement('div');
+    dot.className = 'dm-online-dot ' + (partnerOnline ? 'online' : 'offline');
+    avWrap.appendChild(av);
+    avWrap.appendChild(dot);
+
+    // Info (name + snippet)
+    const info = document.createElement('div');
+    info.className = 'dm-item-info';
+    const nameEl = document.createElement('div');
+    nameEl.className = 'dm-item-name';
+    nameEl.textContent = partnerName;
+    info.appendChild(nameEl);
+    if (data.lastMessage) {
+      const snippet = document.createElement('div');
+      snippet.className = 'dm-item-snippet';
+      snippet.textContent = (data.lastMessageBy === currentUser?.name ? 'Sen: ' : '') + data.lastMessage;
+      info.appendChild(snippet);
+    }
+
+    item.appendChild(avWrap);
+    item.appendChild(info);
+
+    // Unread badge
+    if (unread > 0) {
+      const badge = document.createElement('div');
+      badge.className = 'dm-unread-badge';
+      badge.textContent = unread > 99 ? '99+' : unread;
+      item.appendChild(badge);
+    }
+
+    list.appendChild(item);
+  });
+}
+
+// ── Mevcut sendMessage'ı DM desteğiyle güçlendir ──
+const _originalSendMessage = window.sendMessage;
+window.sendMessage = async () => {
+  if (dmMode && currentDmRoom) {
+    const input = document.getElementById('msgInput');
+    const text = input.value.trim();
+    if (!text || !currentUser || text.length > 2000) return;
+    input.value = '';
+    input.style.height = 'auto';
+    await sendDmMessage(text);
+  } else {
+    // Orijinal kanal mesaj gönderme
+    await _originalSendMessage();
+  }
+};
+
+// ── Mevcut switchChannel'ı DM'den çıkma desteğiyle güçlendir ──
+// switchChannel zaten var, onu wrap ediyoruz
+const _origSwitchChannelRef = window.switchChannel || null;
+// switchChannel global bir fonksiyon olarak tanımlı değilse (module scope'ta),
+// bu kısım renderChannels içinden çağrıldığında çalışır.
+// Bunun yerine, kanal tıklandığında dmMode'u sıfırla.
+
+// Online kullanıcıları cache'le (DM modal için)
+const _origListenOnline = window.listenOnline;
+// listenOnline modül scopeta tanımlı, onValue içinde onlineUsersCache güncellenir.
+// Bunu ayrıca yapıyoruz:
+onValue(ref(db, 'online'), snap => {
+  onlineUsersCache = snap.val() || {};
+});

@@ -431,4 +431,25 @@ header, .sidebar, .chat-header, .login-box, .modal { backdrop-filter: blur(16px)
 #matterCanvas { position: absolute; inset: 0; z-index: 30; pointer-events: all; }
 .chat-area.antigravity-active #messagesContainer { opacity: 0; pointer-events: none; transition: opacity 0.4s ease; }
 .chat-area.antigravity-active .input-area { position: relative; z-index: 40; }
-.chat-area.antigravity-active .chat-header { position: relative; z-index: 40; }
+.chat-area.antigravity-active .chat-header { position: relative; z-index: 40; }
+
+/* ═══ DM (ÖZEL MESAJ) ═══ */
+.dm-item{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;transition:background 0.15s;font-weight:700;font-size:0.82rem;color:var(--muted);position:relative;}
+.dm-item:hover{background:rgba(255,255,255,0.04);color:var(--text);}
+.dm-item.active{background:rgba(255,107,53,0.12);color:var(--accent);}
+.dm-item-av{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;background:var(--card);flex-shrink:0;overflow:hidden;position:relative;}
+.dm-item-av img{width:100%;height:100%;object-fit:cover;border-radius:50%;}
+.dm-online-dot{position:absolute;bottom:-1px;right:-1px;width:8px;height:8px;border-radius:50%;border:1.5px solid var(--surface);}
+.dm-online-dot.online{background:var(--accent3);}
+.dm-online-dot.offline{background:var(--muted);opacity:0.5;}
+.dm-item-info{flex:1;min-width:0;display:flex;flex-direction:column;}
+.dm-item-name{font-size:0.8rem;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.dm-item-snippet{font-size:0.65rem;font-weight:600;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:0.7;}
+.dm-unread-badge{min-width:18px;height:18px;border-radius:10px;background:var(--accent);color:#fff;font-size:0.6rem;font-weight:900;display:flex;align-items:center;justify-content:center;padding:0 4px;flex-shrink:0;animation:msgIn 0.2s ease;}
+.dm-user-pick{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;cursor:pointer;transition:all 0.15s;border:1.5px solid var(--border);background:var(--card);}
+.dm-user-pick:hover{border-color:var(--accent);background:rgba(255,107,53,0.08);transform:translateY(-1px);}
+.dm-user-pick-av{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;background:var(--surface);overflow:hidden;flex-shrink:0;}
+.dm-user-pick-av img{width:100%;height:100%;object-fit:cover;border-radius:50%;}
+.dm-user-pick-name{font-weight:800;font-size:0.88rem;}
+.dm-user-pick-status{font-size:0.7rem;color:var(--accent3);font-weight:700;}
+.chat-header-dm-icon{font-size:1.05rem;color:var(--accent2);}
