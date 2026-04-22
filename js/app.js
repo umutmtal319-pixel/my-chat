@@ -1048,20 +1048,40 @@ function appendMsgActions(wrap,key,msg,isOwn){
     const pinBtn=document.createElement('span');pinBtn.className='msg-action-btn pin-btn';pinBtn.textContent='📌';pinBtn.title='Sabitle';
     pinBtn.onclick=()=>pinMessage(key,msg.text||'[Resim]');
     actions.appendChild(pinBtn);
+function appendMsgActions(wrap,key,msg,isOwn){
+  const isOwner=currentUser?.role==='owner' && !dmMode;
+  const actions=document.createElement('div');actions.className='msg-actions';
+
+  // 😊 Reaksiyon butonu (herkes)
+  if(currentUser){
+    const reactBtn=document.createElement('span');reactBtn.className='msg-action-btn react-btn';reactBtn.textContent='😊';reactBtn.title='Reaksiyon';
+    reactBtn.onclick=(e)=>{e.stopPropagation();toggleReactPicker(reactBtn,key,msg,wrap);};
+    actions.appendChild(reactBtn);
+  }
+
+  // Pin (owner only, no DM)
+  if(isOwner){
+    const pinBtn=document.createElement('span');pinBtn.className='msg-action-btn pin-btn';pinBtn.textContent='📌';pinBtn.title='Sabitle';
+    pinBtn.onclick=()=>pinMessage(key,msg.text||'[Resim]');
+    actions.appendChild(pinBtn);
   }
   // Delete from everyone (owner or own msg)
   if(isOwn||isOwner){
     const delAll=document.createElement('span');delAll.className='msg-action-btn danger';delAll.textContent='🗑️';delAll.title='Herkesten sil';
     delAll.onclick=()=>{
-      const dn=currentUser.name;const io=msg.author===currentUser.name;
-      const nt=io?`🗑️ ${dn} kendi mesajını sildi.`:`🗑️ ${dn}, ${msg.author} adlı kişinin mesajını sildi.`;
-      remove(ref(db,`messages/${currentChannel}/${key}`));
-      push(ref(db,`messages/${currentChannel}`),{type:'system',text:nt,ts:Date.now()});
+      if(dmMode){
+        remove(ref(db,`dm_messages/${currentDmRoom}/${key}`));
+      } else {
+        const dn=currentUser.name;const io=msg.author===currentUser.name;
+        const nt=io?`🗑️ ${dn} kendi mesajını sildi.`:`🗑️ ${dn}, ${msg.author} adlı kişinin mesajını sildi.`;
+        remove(ref(db,`messages/${currentChannel}/${key}`));
+        push(ref(db,`messages/${currentChannel}`),{type:'system',text:nt,ts:Date.now()});
+      }
     };
     actions.appendChild(delAll);
   }
-  // Delete only for me
-  if(isOwn){
+  // Delete only for me (no DM)
+  if(!dmMode && isOwn){
     const delMe=document.createElement('span');delMe.className='msg-action-btn';delMe.textContent='🙈';delMe.title='Sadece benden sil';
     delMe.onclick=()=>{localDeleted.add(key);const arr=[...localDeleted].slice(-500);localStorage.setItem('localDeleted',JSON.stringify(arr));localDeleted=new Set(arr);wrap.closest('.msg-group')?.remove()||wrap.remove();};
     actions.appendChild(delMe);
@@ -1102,7 +1122,8 @@ function toggleReactPicker(btn,key,msg,wrap){
 
 function addReaction(msgKey,emoji){
   if(!currentUser)return;
-  const rRef=ref(db,`messages/${currentChannel}/${msgKey}/reactions/${emoji}/${currentUser.name}`);
+  const path = dmMode ? `dm_messages/${currentDmRoom}/${msgKey}/reactions/${emoji}/${currentUser.name}` : `messages/${currentChannel}/${msgKey}/reactions/${emoji}/${currentUser.name}`;
+  const rRef=ref(db, path);
   get(rRef).then(snap=>{
     if(snap.val()){remove(rRef);}// toggle off
     else{set(rRef,true);}
@@ -1132,7 +1153,13 @@ function startEditMsg(wrap,key,msg){
   const btnRow=document.createElement('div');btnRow.style.cssText='margin-left:39px;display:flex;gap:4px;margin-top:3px;';
   const ok=document.createElement('button');ok.className='edit-confirm-btn';ok.textContent='✅ Kaydet';
   const cancel=document.createElement('button');cancel.className='edit-cancel-btn';cancel.textContent='İptal';
-  ok.onclick=()=>{const newText=textarea.value.trim();if(!newText){btnRow.remove();wrap.replaceChild(bubble,textarea);actions.style.display='';return;}const updatedMsg={type:msg.type,author:msg.author,avatar:msg.avatar,role:msg.role,title:msg.title||'',gradC1:msg.gradC1||'',gradC2:msg.gradC2||'',photoData:msg.photoData||null,text:newText,ts:msg.ts,edited:true,editedBy:currentUser.name};set(ref(db,`messages/${currentChannel}/${key}`),updatedMsg);btnRow.remove();actions.style.display='';};
+  ok.onclick=()=>{
+    const newText=textarea.value.trim();if(!newText){btnRow.remove();wrap.replaceChild(bubble,textarea);actions.style.display='';return;}
+    const updatedMsg={...msg, text:newText, ts:msg.ts, edited:true, editedBy:currentUser.name};
+    const path = dmMode ? `dm_messages/${currentDmRoom}/${key}` : `messages/${currentChannel}/${key}`;
+    set(ref(db, path), updatedMsg);
+    btnRow.remove();actions.style.display='';
+  };
   cancel.onclick=()=>{btnRow.remove();wrap.replaceChild(bubble,textarea);actions.style.display='';};
   btnRow.appendChild(ok);btnRow.appendChild(cancel);wrap.appendChild(btnRow);
   textarea.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();ok.click();}if(e.key==='Escape')cancel.click();});
@@ -1492,10 +1519,11 @@ function switchToDm(roomId, partnerName, partnerData) {
   if (nameEl) nameEl.textContent = partnerName || '?';
   if (descEl) descEl.textContent = 'Özel mesaj';
 
-  // Owner tools ve slowmode gizle
+  // Owner tools ve slowmode gizle, dmCallBtn göster
   document.getElementById('ownerToolsBtn')?.classList.add('hidden');
   document.getElementById('slowmodeBadge')?.classList.remove('visible');
   document.getElementById('pinnedBar')?.classList.add('hidden');
+  document.getElementById('dmCallBtn')?.classList.remove('hidden');
 
   // Kanal badge güncelle
   const badge = document.getElementById('activeChanBadge');
@@ -1529,6 +1557,7 @@ window.switchToChannelMode = (channelId, channelName, channelDesc) => {
   // Header'ı geri çevir
   const hashEl = document.getElementById('chatHeaderHash') || document.querySelector('.chat-header-hash');
   if (hashEl) { hashEl.textContent = '#'; hashEl.className = 'chat-header-hash'; }
+  document.getElementById('dmCallBtn')?.classList.add('hidden');
 
   // Sidebar active states
   document.querySelectorAll('.dm-item').forEach(el => el.classList.remove('active'));
@@ -1548,6 +1577,7 @@ function renderDmMessages(entries) {
   const container = document.getElementById('messagesContainer');
   container.innerHTML = '<div class="day-divider">Özel Mesajlar</div>';
   let prevAuthor = null;
+  let currentGroup = null;
 
   entries.forEach(([key, msg]) => {
     if (msg.type === 'system') {
@@ -1556,15 +1586,16 @@ function renderDmMessages(entries) {
       div.textContent = msg.text || '';
       container.appendChild(div);
       prevAuthor = null;
+      currentGroup = null;
       return;
     }
 
     const isOwn = msg.author === currentUser?.name;
 
     // Yeni grup başlat mı?
-    if (msg.author !== prevAuthor) {
-      const group = document.createElement('div');
-      group.className = 'msg-group' + (isOwn ? ' own' : '');
+    if (msg.author !== prevAuthor || !currentGroup) {
+      currentGroup = document.createElement('div');
+      currentGroup.className = 'msg-group' + (isOwn ? ' own' : '');
       const header = document.createElement('div');
       header.className = 'msg-group-header';
 
@@ -1585,11 +1616,10 @@ function renderDmMessages(entries) {
       header.appendChild(av);
       header.appendChild(nameSpan);
       header.appendChild(timeSpan);
-      group.appendChild(header);
-      container.appendChild(group);
+      currentGroup.appendChild(header);
+      container.appendChild(currentGroup);
     }
 
-    const lastGroup = container.querySelector('.msg-group:last-child') || container;
     const bw = document.createElement('div');
     bw.className = 'msg-bw';
 
@@ -1597,21 +1627,34 @@ function renderDmMessages(entries) {
       const img = document.createElement('img');
       img.className = 'msg-img' + (isOwn ? ' own' : '');
       img.src = msg.imgData;
-      img.onclick = () => { openImageViewer(msg.imgData); };
+      img.onclick = () => { openImgViewer(msg.imgData); };
       bw.appendChild(img);
     } else {
       const bubble = document.createElement('div');
       bubble.className = 'msg-bubble' + (isOwn ? ' own' : '');
       bubble.textContent = msg.text || '';
+      if(msg.edited){const et=document.createElement('span');et.className='edited-tag';et.textContent='(düzenlendi)';bubble.appendChild(et);}
       bw.appendChild(bubble);
     }
 
-    lastGroup.appendChild(bw);
+    appendMsgActions(bw, key, msg, isOwn);
+    currentGroup.appendChild(bw);
+    renderReactions(currentGroup, key, msg.reactions, isOwn);
+
     prevAuthor = msg.author;
   });
 
-  container.scrollTop = container.scrollHeight;
+  const distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+  if(distFromBottom < 180) {
+    container.scrollTop = container.scrollHeight;
+  }
 }
+
+// ── DM Sesli Sohbet Başlat ──
+window.startDmCall = () => {
+  if (!currentDmRoom) return;
+  joinVoiceChannel('dm-' + currentDmRoom);
+};
 
 // ── DM mesaj gönder ──
 window.sendDmMessage = async (text) => {
