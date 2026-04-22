@@ -54,7 +54,6 @@
     </div>
     <div class="header-right">
       <button class="bored-btn" onclick="openBored()">🎲 <span>Sıkıldım</span></button>
-      <button class="bored-btn antigravity-btn" id="antigravityBtn" onclick="toggleAntigravity()">🌀 <span>Yerçekimi</span></button>
       <div class="online-count"><div class="online-dot"></div><span id="onlineCountDisplay">1 çevrimiçi</span></div>
       <div class="user-chip" onclick="openMyProfile()">
         <div class="chip-pp" id="headerPP">🧑</div>
@@ -106,6 +105,7 @@
         <div class="chat-header-right">
           <span class="chat-header-desc" id="chatHeaderDesc">Genel sohbet kanalı</span>
           <div class="slowmode-badge" id="slowmodeBadge">🐢 <span id="slowmodeCountdown" class="slowmode-countdown">--</span>s</div>
+          <button class="dm-call-btn hidden" id="dmCallBtn" onclick="startDmCall()">📞 Ara</button>
           <button class="owner-tools-btn hidden" id="ownerToolsBtn" onclick="openOwnerTools()">👑 Araçlar</button>
         </div>
       </div>
@@ -340,7 +340,27 @@
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.20.0/matter.min.js"></script>
+<!-- DM VOICE CALL OVERLAY -->
+<div id="dmCallOverlay" class="dm-call-overlay hidden">
+  <div class="dm-call-card">
+    <div class="dm-call-avatar" id="dmCallAvatar">🧑</div>
+    <div class="dm-call-name" id="dmCallName">Kullanıcı</div>
+    <div class="dm-call-status" id="dmCallStatus">Aranıyor...</div>
+    <div class="dm-call-timer hidden" id="dmCallTimer">00:00</div>
+    <div class="dm-call-controls">
+      <button class="dm-call-ctrl-btn" id="dmCallMicBtn" onclick="dmCallToggleMic()">
+        <span>🎙️</span><small>Mikrofon</small>
+      </button>
+      <button class="dm-call-ctrl-btn hangup" id="dmCallHangupBtn" onclick="dmCallHangup()">
+        <span>📵</span><small>Kapat</small>
+      </button>
+      <button class="dm-call-ctrl-btn" id="dmCallSpeakerBtn" onclick="dmCallToggleSpeaker()">
+        <span>🔊</span><small>Hoparlör</small>
+      </button>
+    </div>
+  </div>
+</div>
+
 <script type="module" src="js/app.js"></script>
 
 

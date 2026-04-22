@@ -424,14 +424,7 @@ header, .sidebar, .chat-header, .login-box, .modal { backdrop-filter: blur(16px)
 .msg-bubble.own { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 14px 4px 14px 14px; }
 .input-box, .poll-bubble { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
 
-/* ═══ ANTIGRAVITY ═══ */
-.antigravity-btn { background: linear-gradient(135deg, #3ecfcf, #7b5ea7) !important; position: relative; overflow: hidden; }
-.antigravity-btn.active { background: linear-gradient(135deg, #ef476f, #ffd700) !important; box-shadow: 0 0 20px rgba(239,71,111,0.5), 0 0 40px rgba(255,215,0,0.2); animation: antigravPulse 1.5s ease-in-out infinite; }
-@keyframes antigravPulse { 0%,100% { box-shadow: 0 0 20px rgba(239,71,111,0.5); } 50% { box-shadow: 0 0 30px rgba(239,71,111,0.7), 0 0 60px rgba(255,215,0,0.3); } }
-#matterCanvas { position: absolute; inset: 0; z-index: 30; pointer-events: all; }
-.chat-area.antigravity-active #messagesContainer { opacity: 0; pointer-events: none; transition: opacity 0.4s ease; }
-.chat-area.antigravity-active .input-area { position: relative; z-index: 40; }
-.chat-area.antigravity-active .chat-header { position: relative; z-index: 40; }
+/* ═══ ANTIGRAVITY CSS REMOVED ═══ */
 
 /* ═══ DM (ÖZEL MESAJ) ═══ */
 .dm-item{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;transition:background 0.15s;font-weight:700;font-size:0.82rem;color:var(--muted);position:relative;}
@@ -452,4 +445,43 @@ header, .sidebar, .chat-header, .login-box, .modal { backdrop-filter: blur(16px)
 .dm-user-pick-av img{width:100%;height:100%;object-fit:cover;border-radius:50%;}
 .dm-user-pick-name{font-weight:800;font-size:0.88rem;}
 .dm-user-pick-status{font-size:0.7rem;color:var(--accent3);font-weight:700;}
-.chat-header-dm-icon{font-size:1.05rem;color:var(--accent2);}
+.chat-header-dm-icon{font-size:1.05rem;color:var(--accent2);}
+
+/* ═══ DM VOICE CALL ═══ */
+.dm-call-btn{display:flex;align-items:center;gap:4px;background:linear-gradient(135deg,#23a559,#3ecfcf);border:none;border-radius:8px;padding:5px 12px;color:#fff;font-family:'Nunito',sans-serif;font-size:0.78rem;font-weight:800;cursor:pointer;transition:transform 0.15s,box-shadow 0.15s;}
+.dm-call-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(35,165,89,0.4);}
+.dm-call-overlay{position:fixed;inset:0;background:rgba(10,9,20,0.95);z-index:600;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);animation:dmCallIn 0.4s ease;}
+@keyframes dmCallIn{from{opacity:0}to{opacity:1}}
+.dm-call-card{text-align:center;padding:40px 36px;max-width:360px;width:90vw;}
+.dm-call-avatar{width:100px;height:100px;border-radius:50%;background:var(--card);border:3px solid var(--accent3);display:flex;align-items:center;justify-content:center;font-size:48px;margin:0 auto 16px;overflow:hidden;animation:callPulse 2s ease-in-out infinite;}
+.dm-call-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%;}
+@keyframes callPulse{0%,100%{box-shadow:0 0 0 0 rgba(62,207,207,0.4)}50%{box-shadow:0 0 0 16px rgba(62,207,207,0)}}
+.dm-call-avatar.connected{border-color:var(--vc-green);animation:callPulseGreen 2s ease-in-out infinite;}
+@keyframes callPulseGreen{0%,100%{box-shadow:0 0 0 0 rgba(35,165,89,0.4)}50%{box-shadow:0 0 0 16px rgba(35,165,89,0)}}
+.dm-call-name{font-size:1.4rem;font-weight:900;margin-bottom:4px;}
+.dm-call-status{font-size:0.85rem;color:var(--accent3);font-weight:700;margin-bottom:6px;animation:dmStatusBlink 1.5s ease-in-out infinite;}
+.dm-call-status.connected{color:var(--vc-green);animation:none;}
+@keyframes dmStatusBlink{0%,100%{opacity:1}50%{opacity:0.4}}
+.dm-call-timer{font-family:'Space Mono',monospace;font-size:1.6rem;font-weight:700;color:var(--text);margin-bottom:24px;letter-spacing:2px;}
+.dm-call-controls{display:flex;align-items:center;justify-content:center;gap:16px;margin-top:20px;}
+.dm-call-ctrl-btn{display:flex;flex-direction:column;align-items:center;gap:4px;width:64px;height:64px;border-radius:50%;border:2px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-family:'Nunito',sans-serif;transition:all 0.2s;justify-content:center;}
+.dm-call-ctrl-btn span{font-size:20px;line-height:1;}
+.dm-call-ctrl-btn small{font-size:0.55rem;font-weight:800;color:var(--muted);}
+.dm-call-ctrl-btn:hover{border-color:var(--accent3);transform:scale(1.08);}
+.dm-call-ctrl-btn.active{background:rgba(237,66,69,0.2);border-color:var(--vc-red);color:var(--vc-red);}
+.dm-call-ctrl-btn.hangup{background:var(--vc-red);border-color:var(--vc-red);color:#fff;width:68px;height:68px;}
+.dm-call-ctrl-btn.hangup:hover{background:#ff5555;transform:scale(1.1);}
+.dm-call-ctrl-btn.hangup small{color:rgba(255,255,255,0.8);}
+/* Gelen arama bildirimi */
+.dm-incoming-call{position:fixed;top:16px;right:16px;z-index:650;background:var(--surface);border:2px solid var(--vc-green);border-radius:18px;padding:14px 18px;display:flex;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(35,165,89,0.4);animation:incomingSlide 0.4s cubic-bezier(0.34,1.56,0.64,1);}
+@keyframes incomingSlide{from{transform:translateX(120%);opacity:0}to{transform:translateX(0);opacity:1}}
+.dm-incoming-call .inc-avatar{width:40px;height:40px;border-radius:50%;background:var(--card);display:flex;align-items:center;justify-content:center;font-size:22px;overflow:hidden;flex-shrink:0;border:2px solid var(--vc-green);}
+.dm-incoming-call .inc-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%;}
+.dm-incoming-call .inc-info{display:flex;flex-direction:column;}
+.dm-incoming-call .inc-name{font-weight:800;font-size:0.88rem;}
+.dm-incoming-call .inc-label{font-size:0.7rem;color:var(--vc-green);font-weight:700;}
+.dm-incoming-call .inc-btns{display:flex;gap:6px;margin-left:8px;}
+.dm-incoming-call .inc-btn{width:36px;height:36px;border-radius:50%;border:none;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;transition:transform 0.15s;}
+.dm-incoming-call .inc-btn.accept{background:var(--vc-green);color:#fff;}
+.dm-incoming-call .inc-btn.reject{background:var(--vc-red);color:#fff;}
+.dm-incoming-call .inc-btn:hover{transform:scale(1.15);}
