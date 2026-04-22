@@ -953,6 +953,10 @@ function renderMessages(entries, isNewMsg=false){
   entries.forEach(([key,msg])=>{
     if(localDeleted.has(key))return;
     if(msg.type==='system'){
+      // FİLTRE: Eğer mesaj 5 saniyeden eskiyse gösterilmez ve veritabanından kalıcı silinir.
+      const age = Date.now() - (msg.ts || 0);
+      if(age > 5000) { remove(ref(db,`messages/${currentChannel}/${key}`)); return; }
+
       // Daha önce gösterilmişse DOM'a koyma (zaten kayboldu veya fade oluyor)
       if(shownSysMsgKeys.has(key)) return;
       shownSysMsgKeys.add(key);
@@ -972,7 +976,7 @@ function renderMessages(entries, isNewMsg=false){
       else if(t.includes('ses kanalı')||t.includes('🔊'))icon='🔊';
       div.innerHTML=`<span>${icon}</span><span>${t}</span>`;
       container.appendChild(div);
-      autoFadeSysMsg(div, 5000);
+      autoFadeSysMsg(div, 5000 - age);
       prevAuthor=null;currentGroup=null;
     }
     else if(msg.type==='announce'){const div=document.createElement('div');div.className='announce-msg';div.textContent='📢 '+msg.text;container.appendChild(div);prevAuthor=null;currentGroup=null;}
@@ -1571,10 +1575,14 @@ function renderDmMessages(entries) {
 
   entries.forEach(([key, msg]) => {
     if (msg.type === 'system') {
+      const age = Date.now() - (msg.ts || 0);
+      if(age > 5000){ remove(ref(db,`dm_messages/${currentDmRoom}/${key}`)); return; }
+
       const div = document.createElement('div');
       div.className = 'sys-msg';
       div.textContent = msg.text || '';
       container.appendChild(div);
+      autoFadeSysMsg(div, 5000 - age);
       prevAuthor = null;
       currentGroup = null;
       return;
