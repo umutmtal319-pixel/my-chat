@@ -1076,6 +1076,12 @@ function appendMsgActions(wrap,key,msg,isOwn){
     editBtn.onclick=()=>startEditMsg(wrap,key,msg);
     actions.insertBefore(editBtn,actions.firstChild);
   }
+  // İndirme Butonu (Eğer mesaj resimse)
+  if(msg.type==='image'&&msg.imgData){
+    const dlBtn=document.createElement('a');dlBtn.className='msg-action-btn';dlBtn.textContent='⬇️';dlBtn.title='İndir';
+    dlBtn.href=msg.imgData;dlBtn.download=`image-${Date.now()}.png`;dlBtn.style.textDecoration='none';
+    actions.appendChild(dlBtn);
+  }
   // Mobil touch desteği
   wrap.addEventListener('touchstart',()=>{
     document.querySelectorAll('.msg-actions').forEach(a=>{if(a!==actions)a.style.opacity='0';});
