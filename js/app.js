@@ -1033,22 +1033,6 @@ function buildMsgGroup(isOwn,msg,container){
 }
 
 function appendMsgActions(wrap,key,msg,isOwn){
-  const isOwner=currentUser?.role==='owner';
-  const actions=document.createElement('div');actions.className='msg-actions';
-
-  // 😊 Reaksiyon butonu (herkes)
-  if(currentUser){
-    const reactBtn=document.createElement('span');reactBtn.className='msg-action-btn react-btn';reactBtn.textContent='😊';reactBtn.title='Reaksiyon';
-    reactBtn.onclick=(e)=>{e.stopPropagation();toggleReactPicker(reactBtn,key,msg,wrap);};
-    actions.appendChild(reactBtn);
-  }
-
-  // Pin (owner only)
-  if(isOwner){
-    const pinBtn=document.createElement('span');pinBtn.className='msg-action-btn pin-btn';pinBtn.textContent='📌';pinBtn.title='Sabitle';
-    pinBtn.onclick=()=>pinMessage(key,msg.text||'[Resim]');
-    actions.appendChild(pinBtn);
-function appendMsgActions(wrap,key,msg,isOwn){
   const isOwner=currentUser?.role==='owner' && !dmMode;
   const actions=document.createElement('div');actions.className='msg-actions';
 
