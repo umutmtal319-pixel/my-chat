@@ -229,7 +229,29 @@ function upsertVideoTile(name, stream, userInfo) {
     // İsim etiketi
     const lbl = document.createElement('div');
     lbl.className = 'video-tile-label';
+    lbl.style.display = 'flex';
+    lbl.style.alignItems = 'center';
+    lbl.style.justifyContent = 'space-between';
+    lbl.style.gap = '8px';
     lbl.innerHTML = `<span>${name === currentUser?.name ? '🟢 Sen' : '🎙️ '+name}</span>`;
+    
+    // Sesini yerel olarak kapatma (kendimiz değilsek)
+    if(name !== currentUser?.name) {
+      const vBtn = document.createElement('span');
+      vBtn.textContent = '🔊';
+      vBtn.style.cursor = 'pointer';
+      vBtn.style.background = 'rgba(0,0,0,0.5)';
+      vBtn.style.borderRadius = '50%';
+      vBtn.style.padding = '2px 5px';
+      vBtn.title = 'Kişiyi Sustur/Aç';
+      vBtn.onclick = (e) => {
+        e.stopPropagation();
+        vid.muted = !vid.muted;
+        vBtn.textContent = vid.muted ? '🔇' : '🔊';
+        vBtn.style.background = vid.muted ? 'rgba(239,71,111,0.5)' : 'rgba(0,0,0,0.5)';
+      };
+      lbl.appendChild(vBtn);
+    }
     tile.appendChild(lbl);
     grid.appendChild(tile);
   }
@@ -821,6 +843,9 @@ window.joinChat=async()=>{
   // DM odalarını dinle
   setTimeout(()=>listenMyDmRooms(), 300);
 
+  // DM aramalarını dinle
+  setTimeout(()=>listenDmCalls(), 400);
+
   push(ref(db,'messages/genel'),{type:'system',text:`${avatar} ${name} sohbete katıldı!`,ts:Date.now()});
 };
 
@@ -891,6 +916,7 @@ function renderChannels(channels){
   });
 }
 function switchChannel(id,name,desc){
+  window.forceScroll = true;
   // DM modundan çık
   if(dmMode){if(unsubDmMessages){unsubDmMessages();unsubDmMessages=null;}dmMode=false;currentDmRoom=null;const hh=document.querySelector('.chat-header-hash,.chat-header-dm-icon');if(hh){hh.textContent='#';hh.className='chat-header-hash';}document.querySelectorAll('.dm-item').forEach(el=>el.classList.remove('active'));}
   currentChannel=id;document.getElementById('chatHeaderName').textContent=name;document.getElementById('chatHeaderDesc').textContent=desc;
@@ -1013,8 +1039,9 @@ function renderMessages(entries, isNewMsg=false){
   });
   const container2=document.getElementById('messagesContainer');
   const distFromBottom=container2.scrollHeight-container2.scrollTop-container2.clientHeight;
-  if(distFromBottom<180){
+  if(window.forceScroll || distFromBottom<180){
     container2.scrollTop=container2.scrollHeight;
+    window.forceScroll = false;
   } else if(isNewMsg){
     unreadCount++;
     document.getElementById('scrollToBottomBtn').classList.add('visible');
@@ -1498,6 +1525,7 @@ async function openOrCreateDm(targetName, targetData) {
 
 // ── DM moduna geç ──
 function switchToDm(roomId, partnerName, partnerData) {
+  window.forceScroll = true;
   // Önceki dinleyicileri kapat
   if (unsubDmMessages) { unsubDmMessages(); unsubDmMessages = null; }
 
@@ -1643,15 +1671,99 @@ function renderDmMessages(entries) {
   });
 
   const distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-  if(distFromBottom < 180) {
+  if(window.forceScroll || distFromBottom < 180) {
     container.scrollTop = container.scrollHeight;
+    window.forceScroll = false;
   }
 }
 
 // ── DM Sesli Sohbet Başlat ──
 window.startDmCall = () => {
   if (!currentDmRoom) return;
-  joinVoiceChannel('dm-' + currentDmRoom);
+  const callerName = currentUser.name;
+  const roomId = currentDmRoom;
+  
+  // Karşı tarafa çağrı bırak
+  set(ref(db, `dm_calls/${roomId}`), {
+    caller: callerName,
+    ts: Date.now()
+  });
+
+  // Kendisi de direkt kanala katılsın
+  joinVoiceChannel('dm-' + roomId);
+};
+
+// ── DM Arama Dinleyici ──
+function listenDmCalls() {
+  if(!currentUser) return;
+  onValue(ref(db, 'dm_calls'), snap => {
+    const calls = snap.val() || {};
+    let activeCall = null;
+    let activeRoom = null;
+    for (const [roomId, call] of Object.entries(calls)) {
+      if (dmRoomsCache && dmRoomsCache[roomId] && call.caller !== currentUser.name) {
+        if (Date.now() - call.ts < 30000) { // 30 sn geçerliyse
+          activeCall = call;
+          activeRoom = roomId;
+          break;
+        } else {
+          // Süresi geçmiş aramayı sil ve cevapsız yazdır
+          remove(ref(db, `dm_calls/${roomId}`));
+          push(ref(db, `dm_messages/${roomId}`), { type: 'system', text: '📞 Cevapsız arama.', ts: Date.now() });
+        }
+      }
+    }
+    
+    if (activeCall) {
+      showIncomingCallScreen(activeRoom, activeCall.caller);
+    } else {
+      hideIncomingCallScreen();
+    }
+  });
+}
+
+function showIncomingCallScreen(roomId, caller) {
+  let overlay = document.getElementById('incomingCallOverlay');
+  if(!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'incomingCallOverlay';
+    overlay.className = 'modal-overlay show';
+    overlay.style.zIndex = '9999';
+    overlay.style.backdropFilter = 'blur(10px)';
+    document.body.appendChild(overlay);
+  }
+  
+  overlay.innerHTML = `
+    <div class="modal" style="text-align:center; animation: msgIn 0.3s ease; padding:30px; border: 2px solid var(--accent); box-shadow: 0 0 30px rgba(255,107,53,0.3);">
+      <div style="font-size:3rem;">📞</div>
+      <h3 style="margin:15px 0;">Gelen Arama</h3>
+      <p style="margin-bottom:25px; color:var(--text-light);"><strong>${caller}</strong> sizi arıyor...</p>
+      <div style="display:flex; gap:15px; justify-content:center;">
+        <button onclick="acceptCall('${roomId}')" style="background:#06d6a0; padding:12px 24px; border-radius:30px; color:#fff; font-weight:bold; border:none; cursor:pointer;">Kabul Et</button>
+        <button onclick="declineCall('${roomId}')" style="background:#ef476f; padding:12px 24px; border-radius:30px; color:#fff; font-weight:bold; border:none; cursor:pointer;">Reddet</button>
+      </div>
+    </div>
+  `;
+}
+
+function hideIncomingCallScreen() {
+  const overlay = document.getElementById('incomingCallOverlay');
+  if(overlay) overlay.remove();
+}
+
+window.acceptCall = (roomId) => {
+  remove(ref(db, `dm_calls/${roomId}`));
+  joinVoiceChannel('dm-' + roomId);
+  const roomData = dmRoomsCache[roomId];
+  if(roomData) {
+     const partner = getDmPartnerName(roomData);
+     switchToDm(roomId, partner, onlineUsersCache[partner]||{});
+  }
+};
+
+window.declineCall = (roomId) => {
+  remove(ref(db, `dm_calls/${roomId}`));
+  push(ref(db, `dm_messages/${roomId}`), { type: 'system', text: '📞 Arama reddedildi.', ts: Date.now() });
 };
 
 // ── DM mesaj gönder ──
