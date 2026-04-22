@@ -871,6 +871,14 @@ window.logout=()=>{
 window.sendMessage=async()=>{
   const input=document.getElementById('msgInput');const text=input.value.trim();if(!text||!currentUser||text.length>2000)return;
   const safeName=currentUser.name||'';if(safeName.length<2||safeName.length>30){return;}
+
+  if (dmMode && currentDmRoom) {
+    input.value = '';
+    input.style.height = 'auto';
+    await sendDmMessage(text);
+    return;
+  }
+
   const muteSnap=await get(ref(db,`muted/${currentUser.name}`));
   if(muteSnap.val()){input.placeholder='🔇 Susturuldunuz.';input.style.borderColor='#ef476f';setTimeout(()=>{input.placeholder='Mesaj yaz...';input.style.borderColor='';},2000);return;}
   const now2=Date.now();
@@ -917,6 +925,7 @@ function renderChannels(channels){
 }
 function switchChannel(id,name,desc){
   window.forceScroll = true;
+  document.getElementById('dmCallBtn')?.classList.add('hidden');
   // DM modundan çık
   if(dmMode){if(unsubDmMessages){unsubDmMessages();unsubDmMessages=null;}dmMode=false;currentDmRoom=null;const hh=document.querySelector('.chat-header-hash,.chat-header-dm-icon');if(hh){hh.textContent='#';hh.className='chat-header-hash';}document.querySelectorAll('.dm-item').forEach(el=>el.classList.remove('active'));}
   currentChannel=id;document.getElementById('chatHeaderName').textContent=name;document.getElementById('chatHeaderDesc').textContent=desc;
@@ -1041,6 +1050,7 @@ function renderMessages(entries, isNewMsg=false){
   const distFromBottom=container2.scrollHeight-container2.scrollTop-container2.clientHeight;
   if(window.forceScroll || distFromBottom<180){
     container2.scrollTop=container2.scrollHeight;
+    setTimeout(() => { container2.scrollTop = container2.scrollHeight; }, 100);
     window.forceScroll = false;
   } else if(isNewMsg){
     unreadCount++;
@@ -1673,6 +1683,7 @@ function renderDmMessages(entries) {
   const distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
   if(window.forceScroll || distFromBottom < 180) {
     container.scrollTop = container.scrollHeight;
+    setTimeout(() => { container.scrollTop = container.scrollHeight; }, 100);
     window.forceScroll = false;
   }
 }
@@ -1898,21 +1909,7 @@ function renderDmSidebar(unreadData) {
   });
 }
 
-// ── Mevcut sendMessage'ı DM desteğiyle güçlendir ──
-const _originalSendMessage = window.sendMessage;
-window.sendMessage = async () => {
-  if (dmMode && currentDmRoom) {
-    const input = document.getElementById('msgInput');
-    const text = input.value.trim();
-    if (!text || !currentUser || text.length > 2000) return;
-    input.value = '';
-    input.style.height = 'auto';
-    await sendDmMessage(text);
-  } else {
-    // Orijinal kanal mesaj gönderme
-    await _originalSendMessage();
-  }
-};
+// Eski sendMessage wrap kodunu sildik, çünkü ana fonksiyona entegre ettik.
 
 // ── Mevcut switchChannel'ı DM'den çıkma desteğiyle güçlendir ──
 // switchChannel zaten var, onu wrap ediyoruz
