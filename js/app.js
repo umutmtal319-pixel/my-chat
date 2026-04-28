@@ -870,7 +870,7 @@ window.logout=()=>{
 
 window.sendMessage=async()=>{
   const input=document.getElementById('msgInput');const text=input.value.trim();if(!text||!currentUser||text.length>2000)return;
-  const safeName=currentUser.name||'';if(safeName.length<2||safeName.length>30){return;}
+  const safeName=currentUser.name||'';if(!safeName){return;}
 
   if (dmMode && currentDmRoom) {
     input.value = '';
@@ -879,8 +879,14 @@ window.sendMessage=async()=>{
     return;
   }
 
-  const muteSnap=await get(ref(db,`muted/${currentUser.name}`));
-  if(muteSnap.val()){input.placeholder='🔇 Susturuldunuz.';input.style.borderColor='#ef476f';setTimeout(()=>{input.placeholder='Mesaj yaz...';input.style.borderColor='';},2000);return;}
+  let isMuted = false;
+  try {
+    const muteSnap = await get(ref(db, `muted/${currentUser.name}`));
+    isMuted = !!muteSnap.val();
+  } catch(e) {
+    console.warn("Mute check failed:", e);
+  }
+  if(isMuted){input.placeholder='🔇 Susturuldunuz.';input.style.borderColor='#ef476f';setTimeout(()=>{input.placeholder='Mesaj yaz...';input.style.borderColor='';},2000);return;}
   const now2=Date.now();
   if(now2<rateLimitedUntil){const secs=Math.ceil((rateLimitedUntil-now2)/1000);input.placeholder=`🚫 Çok hızlı! ${secs}s bekle.`;input.style.borderColor='#ef476f';setTimeout(()=>{input.placeholder='Mesaj yaz...';input.style.borderColor='';},2000);return;}
   const cutoff=now2-RATE_LIMIT_WINDOW;while(MSG_TIMESTAMPS.length&&MSG_TIMESTAMPS[0]<cutoff)MSG_TIMESTAMPS.shift();
@@ -896,11 +902,14 @@ window.sendMessage=async()=>{
   try {
     await push(ref(db,`messages/${currentChannel}`),{type:'user',author:currentUser.name,avatar:currentUser.avatar,role:currentUser.role,title:currentUser.title,gradC1:currentUser.gradC1,gradC2:currentUser.gradC2,photoData:currentUser.photoData||null,text,ts:Date.now()});
   } catch(err) {
+    console.error("Firebase push error:", err);
+    input.style.borderColor='#ef476f';
     if(err.message&&err.message.includes('PERMISSION_DENIED')){
-      input.style.borderColor='#ef476f';
-      input.placeholder='❌ Firebase izni yok! Console→Rules→ ".write":true yap';
-      setTimeout(()=>{input.placeholder='Mesaj yaz...';input.style.borderColor='';},5000);
+      input.placeholder='❌ Firebase izni yok! (Rules)';
+    } else {
+      input.placeholder='❌ Mesaj gönderilemedi!';
     }
+    setTimeout(()=>{input.placeholder='Mesaj yaz...';input.style.borderColor='';},5000);
   }
 };
 
@@ -1790,23 +1799,33 @@ window.sendDmMessage = async (text) => {
     ts: Date.now()
   };
 
-  await push(ref(db, `dm_messages/${currentDmRoom}`), msgData);
+  try {
+    await push(ref(db, `dm_messages/${currentDmRoom}`), msgData);
 
-  // Room meta güncelle
-  await set(ref(db, `dm_rooms/${currentDmRoom}/lastMessage`), text.substring(0, 50));
-  await set(ref(db, `dm_rooms/${currentDmRoom}/lastMessageBy`), currentUser.name);
-  await set(ref(db, `dm_rooms/${currentDmRoom}/lastMessageTs`), Date.now());
+    // Room meta güncelle
+    await set(ref(db, `dm_rooms/${currentDmRoom}/lastMessage`), text.substring(0, 50));
+    await set(ref(db, `dm_rooms/${currentDmRoom}/lastMessageBy`), currentUser.name);
+    await set(ref(db, `dm_rooms/${currentDmRoom}/lastMessageTs`), Date.now());
 
-  // Karşı tarafın unread sayısını artır
-  const roomSnap = await get(ref(db, `dm_rooms/${currentDmRoom}`));
-  const roomData = roomSnap.val();
-  if (roomData?.participantList) {
-    const partner = roomData.participantList.find(n => n !== currentUser.name);
-    if (partner) {
-      const unreadRef = ref(db, `dm_unread/${partner}/${currentDmRoom}`);
-      const unreadSnap = await get(unreadRef);
-      const cur = unreadSnap.val() || 0;
-      await set(unreadRef, cur + 1);
+    // Karşı tarafın unread sayısını artır
+    const roomSnap = await get(ref(db, `dm_rooms/${currentDmRoom}`));
+    const roomData = roomSnap.val();
+    if (roomData?.participantList) {
+      const partner = roomData.participantList.find(n => n !== currentUser.name);
+      if (partner) {
+        const unreadRef = ref(db, `dm_unread/${partner}/${currentDmRoom}`);
+        const unreadSnap = await get(unreadRef);
+        const cur = unreadSnap.val() || 0;
+        await set(unreadRef, cur + 1);
+      }
+    }
+  } catch(e) {
+    console.warn("DM send error:", e);
+    const input=document.getElementById('msgInput');
+    if(input) {
+      input.style.borderColor='#ef476f';
+      input.placeholder='❌ DM izni yok!';
+      setTimeout(()=>{input.placeholder='Mesaj yaz...';input.style.borderColor='';},5000);
     }
   }
 };
