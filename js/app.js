@@ -235,22 +235,35 @@ function upsertVideoTile(name, stream, userInfo) {
     lbl.style.gap = '8px';
     lbl.innerHTML = `<span>${name === currentUser?.name ? '🟢 Sen' : '🎙️ '+name}</span>`;
     
-    // Sesini yerel olarak kapatma (kendimiz değilsek)
+    // Bireysel ses seviyesi kontrolü (kendimiz değilsek)
     if(name !== currentUser?.name) {
+      const volWrap = document.createElement('div');
+      volWrap.className = 'vc-vol-wrap';
       const vBtn = document.createElement('span');
       vBtn.textContent = '🔊';
       vBtn.style.cursor = 'pointer';
-      vBtn.style.background = 'rgba(0,0,0,0.5)';
-      vBtn.style.borderRadius = '50%';
-      vBtn.style.padding = '2px 5px';
+      vBtn.style.fontSize = '14px';
       vBtn.title = 'Kişiyi Sustur/Aç';
+      const slider = document.createElement('input');
+      slider.type = 'range'; slider.min = '0'; slider.max = '100'; slider.value = '100';
+      slider.className = 'vc-vol-slider';
+      slider.title = 'Ses seviyesi';
+      slider.oninput = (e) => {
+        e.stopPropagation();
+        const val = parseInt(slider.value);
+        vid.volume = val / 100;
+        vid.muted = val === 0;
+        vBtn.textContent = val === 0 ? '🔇' : val < 50 ? '🔉' : '🔊';
+      };
       vBtn.onclick = (e) => {
         e.stopPropagation();
         vid.muted = !vid.muted;
-        vBtn.textContent = vid.muted ? '🔇' : '🔊';
-        vBtn.style.background = vid.muted ? 'rgba(239,71,111,0.5)' : 'rgba(0,0,0,0.5)';
+        if(vid.muted){ slider.value = '0'; vBtn.textContent = '🔇'; }
+        else { slider.value = '100'; vid.volume = 1; vBtn.textContent = '🔊'; }
       };
-      lbl.appendChild(vBtn);
+      volWrap.appendChild(vBtn);
+      volWrap.appendChild(slider);
+      lbl.appendChild(volWrap);
     }
     tile.appendChild(lbl);
     grid.appendChild(tile);
@@ -328,7 +341,23 @@ async function sendOffer(peerName) {
   try {
     const offer = await pc.createOffer();
     if (pc.signalingState !== 'stable') return;
+    // Video kalitesini artırmak için SDP'yi düzenle
+    let sdp = offer.sdp;
+    sdp = sdp.replace(/a=mid:video\r\n/g, 'a=mid:video\r\nb=AS:1500\r\n');
+    offer.sdp = sdp;
     await pc.setLocalDescription(offer);
+    // Video sender varsa maxBitrate ayarla
+    for(const sender of pc.getSenders()){
+      if(sender.track?.kind==='video'){
+        try{
+          const params=sender.getParameters();
+          if(!params.encodings)params.encodings=[{}];
+          params.encodings[0].maxBitrate=1500000;
+          params.encodings[0].maxFramerate=30;
+          await sender.setParameters(params);
+        }catch(e){}
+      }
+    }
     const path = `vc_sig/${vcState.currentChannel}/${peerName}/${currentUser.name}`;
     await set(ref(db, path+'/offer'), { sdp: JSON.stringify(pc.localDescription), ts: Date.now() });
   } catch(e) { console.warn('sendOffer err', e); }
@@ -424,7 +453,7 @@ window.vcToggleCam = async () => {
   vcState.camOff = !vcState.camOff;
   if (!vcState.camOff) {
     try {
-      const cs = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+      const cs = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width:{ideal:1280,min:640}, height:{ideal:720,min:480}, frameRate:{ideal:30,min:15} } });
       const vt = cs.getVideoTracks()[0];
       vcState.localStream.addTrack(vt);
       for (const pc of Object.values(vcState.peers)) {
@@ -791,8 +820,8 @@ window.toggleSidebar=()=>{
   ov.classList.toggle('show');
 };
 
-['addChannelModal','addVcModal','profileModal','editProfileModal','boredModal','pollModal','ownerToolsModal','announceModal','confirmModal','slowModeModal','roleModal'].forEach(id=>{
-  document.getElementById(id).addEventListener('click',e=>{ if(e.target.id===id)window.closeModal(id); });
+['addChannelModal','addVcModal','profileModal','editProfileModal','boredModal','pollModal','ownerToolsModal','announceModal','confirmModal','slowModeModal','roleModal','muteModal'].forEach(id=>{
+  const el=document.getElementById(id);if(el)el.addEventListener('click',e=>{ if(e.target.id===id)window.closeModal(id); });
 });
 
 // VC modal butonlarını bağla
@@ -834,6 +863,7 @@ window.joinChat=async()=>{
   setupOnlinePresence();
   setupInput();
   listenChannels();
+  switchChannel('genel','genel','Genel sohbet kanalı');
   listenOnline();
   listenTyping();
 
@@ -845,6 +875,9 @@ window.joinChat=async()=>{
 
   // DM aramalarını dinle
   setTimeout(()=>listenDmCalls(), 400);
+
+  // Mute durumunu dinle
+  setTimeout(()=>listenMyMuteStatus(), 500);
 
   push(ref(db,'messages/genel'),{type:'system',text:`${avatar} ${name} sohbete katıldı!`,ts:Date.now()});
 };
@@ -879,14 +912,33 @@ window.sendMessage=async()=>{
     return;
   }
 
-  let isMuted = false;
+  // ── MUTE CHECK (süreli) ──
   try {
     const muteSnap = await get(ref(db, `muted/${currentUser.name}`));
-    isMuted = !!muteSnap.val();
+    const muteData = muteSnap.val();
+    if(muteData){
+      // Süreli mute: ts + duration*1000 > now ise hala susturulmuş
+      if(muteData.duration){
+        const muteEnd = muteData.ts + muteData.duration*1000;
+        if(Date.now() < muteEnd){
+          const remaining = Math.ceil((muteEnd - Date.now())/1000);
+          showMuteCountdown(remaining);
+          return;
+        } else {
+          // Süre dolmuş, mute kaldır
+          remove(ref(db, `muted/${currentUser.name}`));
+        }
+      } else {
+        // Süresiz mute
+        input.placeholder='🔇 Susturuldunuz.';input.style.borderColor='#ef476f';
+        setTimeout(()=>{input.placeholder='Mesaj yaz...';input.style.borderColor='';},2000);
+        return;
+      }
+    }
   } catch(e) {
     console.warn("Mute check failed:", e);
   }
-  if(isMuted){input.placeholder='🔇 Susturuldunuz.';input.style.borderColor='#ef476f';setTimeout(()=>{input.placeholder='Mesaj yaz...';input.style.borderColor='';},2000);return;}
+
   const now2=Date.now();
   if(now2<rateLimitedUntil){const secs=Math.ceil((rateLimitedUntil-now2)/1000);input.placeholder=`🚫 Çok hızlı! ${secs}s bekle.`;input.style.borderColor='#ef476f';setTimeout(()=>{input.placeholder='Mesaj yaz...';input.style.borderColor='';},2000);return;}
   const cutoff=now2-RATE_LIMIT_WINDOW;while(MSG_TIMESTAMPS.length&&MSG_TIMESTAMPS[0]<cutoff)MSG_TIMESTAMPS.shift();
@@ -896,7 +948,20 @@ window.sendMessage=async()=>{
     setTimeout(()=>{input.placeholder='Mesaj yaz...';input.style.borderColor='';},RATE_LIMIT_COOLDOWN);return;
   }
   MSG_TIMESTAMPS.push(now2);
-  if(slowMode&&slowModeSecs>0&&currentUser.role!=='owner'){const now=Date.now();if(now-lastSentTime<slowModeSecs*1000){return;}lastSentTime=now;startSlowCountdown();}
+
+  // ── SLOW MODE CHECK ──
+  if(slowMode&&slowModeSecs>0&&currentUser.role!=='owner'){
+    const now=Date.now();
+    if(lastSentTime>0 && now-lastSentTime<slowModeSecs*1000){
+      const remaining=Math.ceil((slowModeSecs*1000-(now-lastSentTime))/1000);
+      window.showToast(`🐢 Yavaş mod! ${remaining}s bekle.`,'error');
+      startSlowCountdown();
+      return;
+    }
+    lastSentTime=now;
+    startSlowCountdown();
+  }
+
   input.value='';input.style.height='auto';
   if(myTypingRef)remove(myTypingRef);clearTimeout(typingTimer);
   try {
@@ -1306,12 +1371,120 @@ function listenOnline(){
       if(u.title){tl.textContent=u.title;tl.style.background=`linear-gradient(90deg,${u.gradC1||'#ff6b35'},${u.gradC2||'#3ecfcf'})`;tl.style.webkitBackgroundClip='text';tl.style.webkitTextFillColor='transparent';tl.style.backgroundClip='text';}
       else{tl.textContent=u.role==='owner'?'👑 Kurucu':'👤 Üye';tl.style.color='var(--muted)';}
       info.appendChild(nm);info.appendChild(tl);item.appendChild(avW);item.appendChild(info);
-      if(canKick){const kb=document.createElement('span');kb.className='kick-btn';kb.textContent='✕';kb.title='At';kb.onclick=e=>{e.stopPropagation();kickUser(u.name);};item.appendChild(kb);const mb=document.createElement('span');mb.className='kick-btn';mb.style.color='#ffd700';mb.title='Sustur/Aç';mb.textContent='🔇';mb.onclick=e=>{e.stopPropagation();toggleMute(u.name,mb);};get(ref(db,`muted/${u.name}`)).then(s=>{if(s.val()){mb.style.color='#ef476f';mb.textContent='🔊';}});item.appendChild(mb);}
+
+      // Susturuldu rozeti kontrolü
+      get(ref(db,`muted/${u.name}`)).then(s=>{
+        const muteData=s.val();
+        if(muteData){
+          let stillMuted=true;
+          if(muteData.duration){
+            const muteEnd=muteData.ts+muteData.duration*1000;
+            if(Date.now()>=muteEnd){stillMuted=false;remove(ref(db,`muted/${u.name}`));}
+          }
+          if(stillMuted){
+            const badge=document.createElement('span');badge.className='muted-badge-tag';badge.textContent='🔇 Susturuldu';
+            info.appendChild(badge);
+          }
+        }
+      });
+
+      if(canKick){
+        const kb=document.createElement('span');kb.className='kick-btn';kb.textContent='✕';kb.title='At';kb.onclick=e=>{e.stopPropagation();kickUser(u.name);};item.appendChild(kb);
+        const mb=document.createElement('span');mb.className='kick-btn';mb.style.color='#ffd700';mb.title='Sustur/Aç';mb.textContent='🔇';
+        mb.onclick=e=>{e.stopPropagation();openMuteModal(u.name);};
+        get(ref(db,`muted/${u.name}`)).then(s=>{if(s.val()){mb.style.color='#ef476f';mb.textContent='🔊';mb.onclick=e=>{e.stopPropagation();unmuteUser(u.name)};}});
+        item.appendChild(mb);
+      }
       item.onclick=e=>{if(!e.target.classList.contains('kick-btn'))showProfile(u.name);};list.appendChild(item);
     });
   });
 }
-window.toggleMute=async(name,btn)=>{if(currentUser?.role!=='owner')return;const snap=await get(ref(db,`muted/${name}`));if(snap.val()){remove(ref(db,`muted/${name}`));push(ref(db,`messages/${currentChannel}`),{type:'system',text:`🔊 ${name} susturması kaldırıldı.`,ts:Date.now()});}else{set(ref(db,`muted/${name}`),{by:currentUser.name,ts:Date.now()});push(ref(db,`messages/${currentChannel}`),{type:'system',text:`🔇 ${name} susturuldu.`,ts:Date.now()});}};
+
+// ─── MUTE SİSTEMİ (Süreli) ───
+let muteModalTarget=null;
+let muteCountdownInterval=null;
+
+window.openMuteModal=(name)=>{
+  muteModalTarget=name;
+  const modal=document.getElementById('muteModal');
+  if(!modal)return;
+  document.getElementById('muteTargetName').textContent=name;
+  document.getElementById('muteDurationInput').value='60';
+  modal.classList.remove('hidden');
+};
+
+window.confirmMuteUser=async()=>{
+  if(!muteModalTarget||currentUser?.role!=='owner')return;
+  const durInput=document.getElementById('muteDurationInput');
+  const duration=parseInt(durInput.value)||60;
+  await set(ref(db,`muted/${muteModalTarget}`),{by:currentUser.name,ts:Date.now(),duration:duration});
+  push(ref(db,`messages/${currentChannel}`),{type:'system',text:`🔇 ${muteModalTarget}, ${duration}s susturuldu.`,ts:Date.now()});
+  closeModal('muteModal');
+  muteModalTarget=null;
+};
+
+window.unmuteUser=async(name)=>{
+  if(currentUser?.role!=='owner')return;
+  await remove(ref(db,`muted/${name}`));
+  push(ref(db,`messages/${currentChannel}`),{type:'system',text:`🔊 ${name} susturması kaldırıldı.`,ts:Date.now()});
+};
+
+// Mesaj kutusunda mute geri sayım göstergesi
+function showMuteCountdown(remainingSecs){
+  const input=document.getElementById('msgInput');
+  const inputBox=input.parentElement;
+  // Zaten aktif bir countdown varsa temizle
+  clearInterval(muteCountdownInterval);
+  let existing=inputBox.querySelector('.mute-countdown-overlay');
+  if(!existing){
+    existing=document.createElement('div');existing.className='mute-countdown-overlay';
+    inputBox.style.position='relative';inputBox.appendChild(existing);
+  }
+  let rem=remainingSecs;
+  existing.textContent=`🔇 Susturuldun, ${rem}s sonra mesaj gönderebileceksin`;
+  input.disabled=true;inputBox.classList.add('slowmode-input-block');
+  muteCountdownInterval=setInterval(()=>{
+    rem--;
+    if(rem<=0){
+      clearInterval(muteCountdownInterval);
+      existing.remove();input.disabled=false;inputBox.classList.remove('slowmode-input-block');
+      input.placeholder='Mesaj yaz... (Enter = gönder)';
+    } else {
+      existing.textContent=`🔇 Susturuldun, ${rem}s sonra mesaj gönderebileceksin`;
+    }
+  },1000);
+}
+
+// Kullanıcının kendi mute durumunu dinle
+function listenMyMuteStatus(){
+  if(!currentUser)return;
+  onValue(ref(db,`muted/${currentUser.name}`),snap=>{
+    const muteData=snap.val();
+    const input=document.getElementById('msgInput');
+    if(!input)return;
+    if(muteData){
+      if(muteData.duration){
+        const muteEnd=muteData.ts+muteData.duration*1000;
+        const remaining=Math.ceil((muteEnd-Date.now())/1000);
+        if(remaining>0){showMuteCountdown(remaining);}
+        else{remove(ref(db,`muted/${currentUser.name}`));}
+      } else {
+        input.placeholder='🔇 Süresiz susturuldunuz.';
+        input.disabled=true;input.parentElement.classList.add('slowmode-input-block');
+      }
+    } else {
+      // Mute kalktı
+      clearInterval(muteCountdownInterval);
+      const overlay=input.parentElement.querySelector('.mute-countdown-overlay');
+      if(overlay)overlay.remove();
+      input.disabled=false;input.parentElement.classList.remove('slowmode-input-block');
+      input.placeholder='Mesaj yaz... (Enter = gönder)';
+    }
+  });
+}
+
+// toggleMute eski uyumluluk (kullanılmıyorsa bile)
+window.toggleMute=async(name,btn)=>{openMuteModal(name);};
 
 // ─── ROLE ASSIGN ───
 let roleModalTarget=null,roleModalSelected='member';
@@ -1416,8 +1589,7 @@ function renderUnreadBadge(){
   } else { if(dot)dot.remove(); }
 }
 
-listenChannels();
-switchChannel('genel','genel','Genel sohbet kanalı');
+// listenChannels ve switchChannel logindan sonra çağrılır (joinChat içinde)
 initScrollWatcher();
 
 // Mobil: visualViewport resize (klavye açıldığında layout düzelt)

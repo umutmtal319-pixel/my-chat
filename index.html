@@ -329,6 +329,27 @@
 ═══════════════════════════════════════════════ -->
 
 <!-- DM MODAL -->
+
+<!-- MUTE MODAL -->
+<div class="modal-overlay hidden" id="muteModal">
+  <div class="modal" style="max-width:360px">
+    <h3>🔇 Kullanıcı Sustur</h3>
+    <p><strong id="muteTargetName">Kullanıcı</strong> adlı kişiyi ne kadar süreliğine susturmak istiyorsun?</p>
+    <input class="modal-input" id="muteDurationInput" type="number" min="10" max="3600" value="60" placeholder="Süre (saniye)" style="font-size:1.2rem;text-align:center;font-weight:800;letter-spacing:2px;"/>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
+      <button onclick="document.getElementById('muteDurationInput').value=30" style="flex:1;padding:7px;background:var(--card);border:1.5px solid var(--border);border-radius:8px;color:var(--muted);font-family:Nunito,sans-serif;font-size:0.82rem;font-weight:800;cursor:pointer;">30s</button>
+      <button onclick="document.getElementById('muteDurationInput').value=60" style="flex:1;padding:7px;background:var(--card);border:1.5px solid var(--border);border-radius:8px;color:var(--muted);font-family:Nunito,sans-serif;font-size:0.82rem;font-weight:800;cursor:pointer;">1dk</button>
+      <button onclick="document.getElementById('muteDurationInput').value=300" style="flex:1;padding:7px;background:var(--card);border:1.5px solid var(--border);border-radius:8px;color:var(--muted);font-family:Nunito,sans-serif;font-size:0.82rem;font-weight:800;cursor:pointer;">5dk</button>
+      <button onclick="document.getElementById('muteDurationInput').value=600" style="flex:1;padding:7px;background:var(--card);border:1.5px solid var(--border);border-radius:8px;color:var(--muted);font-family:Nunito,sans-serif;font-size:0.82rem;font-weight:800;cursor:pointer;">10dk</button>
+    </div>
+    <div class="modal-btns">
+      <button class="modal-btn secondary" onclick="closeModal('muteModal')">İptal</button>
+      <button class="modal-btn danger" onclick="confirmMuteUser()">🔇 Sustur</button>
+    </div>
+  </div>
+</div>
+
+<!-- DM MODAL -->
 <div class="modal-overlay hidden" id="dmModal">
   <div class="modal">
     <h3>✉️ Yeni Özel Mesaj</h3><p>Çevrimiçi kullanıcılardan birini seç veya ara.</p>
