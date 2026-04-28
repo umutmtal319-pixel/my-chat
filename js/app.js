@@ -913,30 +913,35 @@ window.sendMessage=async()=>{
   }
 
   // ── MUTE CHECK (süreli) ──
-  try {
-    const muteSnap = await get(ref(db, `muted/${currentUser.name}`));
-    const muteData = muteSnap.val();
-    if(muteData){
-      // Süreli mute: ts + duration*1000 > now ise hala susturulmuş
-      if(muteData.duration){
-        const muteEnd = muteData.ts + muteData.duration*1000;
-        if(Date.now() < muteEnd){
-          const remaining = Math.ceil((muteEnd - Date.now())/1000);
-          showMuteCountdown(remaining);
-          return;
+  if (currentUser.role !== 'owner') {
+    try {
+      const muteSnap = await get(ref(db, `muted/${currentUser.name}`));
+      const muteData = muteSnap.val();
+      if(muteData){
+        // Süreli mute: ts + duration*1000 > now ise hala susturulmuş
+        if(muteData.duration){
+          const muteEnd = muteData.ts + muteData.duration*1000;
+          if(Date.now() < muteEnd){
+            const remaining = Math.ceil((muteEnd - Date.now())/1000);
+            showMuteCountdown(remaining);
+            return;
+          } else {
+            // Süre dolmuş, mute kaldır
+            remove(ref(db, `muted/${currentUser.name}`));
+          }
         } else {
-          // Süre dolmuş, mute kaldır
-          remove(ref(db, `muted/${currentUser.name}`));
+          // Süresiz mute
+          input.placeholder='🔇 Susturuldunuz.';input.style.borderColor='#ef476f';
+          setTimeout(()=>{input.placeholder='Mesaj yaz...';input.style.borderColor='';},2000);
+          return;
         }
-      } else {
-        // Süresiz mute
-        input.placeholder='🔇 Susturuldunuz.';input.style.borderColor='#ef476f';
-        setTimeout(()=>{input.placeholder='Mesaj yaz...';input.style.borderColor='';},2000);
-        return;
       }
+    } catch(e) {
+      console.warn("Mute check failed:", e);
     }
-  } catch(e) {
-    console.warn("Mute check failed:", e);
+  } else {
+    // Kurucu her ihtimale karşı mute kontrolüne takılmaz ve kaydı varsa siler
+    remove(ref(db, `muted/${currentUser.name}`));
   }
 
   const now2=Date.now();
@@ -1462,6 +1467,13 @@ function listenMyMuteStatus(){
     const muteData=snap.val();
     const input=document.getElementById('msgInput');
     if(!input)return;
+    
+    // Kurucular susturulamaz
+    if(muteData && currentUser.role === 'owner') {
+      remove(ref(db,`muted/${currentUser.name}`));
+      return;
+    }
+
     if(muteData){
       if(muteData.duration){
         const muteEnd=muteData.ts+muteData.duration*1000;
